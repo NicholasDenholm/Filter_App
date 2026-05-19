@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Sony_camera_link_test</string>
+    <string name="capture_string_capture">Capture@string/Capture</string>
+    <string name="my_image_description">testing</string>
+</resources>

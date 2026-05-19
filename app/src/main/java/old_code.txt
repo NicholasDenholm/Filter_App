@@ -1,0 +1,63 @@
+//takePhotoButton.setOnClickListener(v -> takePicture());
+
+/* Old working method from MainActivity
+    private void takePicture() {
+        String json = "{\"method\":\"actTakePicture\",\"params\":[],\"id\":1,\"version\":\"1.0\"}";
+
+        RequestBody body = RequestBody.create(
+                json,
+                MediaType.parse("application/json")
+        );
+
+        Request request = new Request.Builder().url(CAMERA_URL).post(body).build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e("SONY CAMERA", "Request Failed", e);
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String responseText = response.body().string();
+
+                try {
+                    JSONObject obj = new JSONObject(responseText);
+                    JSONArray result = obj.getJSONArray("result");
+                    JSONArray urls = result.getJSONArray(0);
+                    String imageUrl = urls.getString(0);
+
+                    Log.d("SONY CAMERA", "Image URL:" + imageUrl);
+
+                    // Get stream of image to later pass to filter functions
+                    InputStream in = new URL(imageUrl).openStream();
+                    currentImage = BitmapFactory.decodeStream(in);
+                    CurrentImageUrl = imageUrl;
+
+                    runOnUiThread(() -> {
+                        ImageView imageView = findViewById(R.id.image_view);
+                        Glide.with(MainActivity.this).load(imageUrl).into(imageView);
+                    });
+
+                } catch (Exception e) {
+                    Log.e("SONY CAMERA", "JSON parse error in takePicture");
+                }
+            }
+        });
+
+    }
+    */
+
+
+    /* Some intent code from a video tutorial I found
+        @Override
+        protected void onNewIntent(Intent intent) {
+            super.onNewIntent(intent);
+            setIntent(intent);
+            handleIntent(intent);
+        }
+
+        private void handleIntent(Intent intent) {
+            String action = intent != null ? intent.getAction() : null;
+        }
+        */
