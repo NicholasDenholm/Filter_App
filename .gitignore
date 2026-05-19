@@ -13,3 +13,51 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+
+# Gradle
+.gradle/
+build/
+
+# Local configuration
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kotlin
+*.kotlin_module
+
+# Generated files
+captures/
+.externalNativeBuild/
+.cxx/
+
+# APK / AAB outputs
+*.apk
+*.aab
+
+# Logs
+*.log
+
+# Keystore files (IMPORTANT)
+*.jks
+*.keystore
+
+# Firebase / secrets (if applicable)
+google-services.json
+
+# NDK
+obj/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Profiling
+*.hprof
