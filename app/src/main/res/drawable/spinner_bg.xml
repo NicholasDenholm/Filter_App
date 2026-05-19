@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- res/drawable/spinner_bg.xml
+     Gives the Spinner a rounded dark card look with a subtle border.
+     Reference in the layout as android:background="@drawable/spinner_bg"  -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Background card -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1E1E2A" />
+            <stroke android:width="0.5dp" android:color="#333333" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+
+    <!-- Chevron icon on the right -->
+    <item
+        android:gravity="end|center_vertical"
+        android:right="10dp">
+        <shape android:shape="oval">
+            <!-- Transparent — just a positioning anchor for the arrow below -->
+        </shape>
+    </item>
+
+</layer-list>
