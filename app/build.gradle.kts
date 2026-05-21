@@ -46,6 +46,4 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.bumptech.glide:glide:4.16.0")
-    implementation("com.quickbirdstudios:opencv:3.4.15")
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
 }

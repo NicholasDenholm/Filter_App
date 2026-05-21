@@ -24,6 +24,7 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.Spinner;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -32,7 +33,6 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
-import org.opencv.android.OpenCVLoader;
 import com.bumptech.glide.Glide;
 
 import java.io.File;
@@ -46,28 +46,67 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
+    // ── UI references ──────────────────────────────────────────────────────
+    private ImageView imageView;
+    private Spinner filterSpinner;
+    private SeekBar seekBar;
+    private TextView seekValueLabel;
+    private Button buttonPhoto;
+    private Button buttonProcess;
+    private ProgressBar progressBar;
 
-    private SonyCameraClient cameraClient;
+    // ── State ──────────────────────────────────────────────────────────────
+    // Default on startup
+    private String selectedFilter = "K-means";
+    private int currentIntensity = 10;
 
     private Bitmap currentImage;
     private String CurrentImageUrl;
-    // Default on startup
-    private String selectedFilter = "K-Means";
+
+    // Filter options shown in the spinner
+    private static final String[] FILTER_OPTIONS = {
+            "K-means clustering",
+            "Pixelate",
+            "Grayscale",
+            "Interlaced"
+    };
+
+    // Track the minimum offset manually instead of using SeekBar.setMin() (API 26+).
+    // The SeekBar internally always runs from 0; add seekMin when reading progress.
+    private int seekMin = 2;
+
+    // Helper: set the seekbar range without using setMin/getMin
+    private void setSeekBarRange(int min, int max) {
+        seekMin = min;
+        seekBar.setMax(max - min);      // internal max is always (real max − real min)
+    }
+
+    // Helper: get the real value (adds the offset back)
+    private int getSeekBarValue() {
+        return seekBar.getProgress() + seekMin;
+    }
+
+    // Helper: set the real value (subtracts the offset)
+    private void setSeekBarValue(int value) {
+        seekBar.setProgress(value - seekMin);
+    }
+
 
     interface OnBitmapReady {
         void onReady(Bitmap bitmap);
     }
 
+    // ── Camera Clients ─────────────────────────────────────────────────────
+    private SonyCameraClient cameraClient;
+
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
-        setContentView(R.layout.activity_main);
-
-        if (!OpenCVLoader.initDebug())
-            Log.e("OpenCV", "Unable to load OpenCV!");
-        else
-            Log.d("OpenCV", "OpenCV loaded Successfully!");
+        //setContentView(R.layout.activity_main);
+        setContentView(R.layout.ui_redesign);
 
         cameraClient = new SonyCameraClient();
 
@@ -79,12 +118,27 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Came with the default template
+        /*
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+         */
 
+        try {
+            //  Do the setup
+            bindViews();
+            setupFilterSpinner();
+            setupSeekBar();
+            setupButtons();
+        }
+        catch(Exception e) {
+            Log.e("SETUP FAILED", "ERROR: " + e);
+        }
+
+
+        /*
         // ------------------- Spinner menu
         Spinner spinner = findViewById(R.id.filter_spinner);
         String[] filters = {"K-Means", "Pixelate", "Grayscale", "Interlaced"};
@@ -107,11 +161,13 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
+         */
 
         // ------------------- Seek bar
-        SeekBar seekBar = findViewById(R.id.seekBar2);
+        //SeekBar seekBar = findViewById(R.id.seekBar2);
 
         // ------------------- Take photo Button
+        /*
         Button takePhotoButton = findViewById(R.id.button_photo);
         takePhotoButton.setOnClickListener(v -> {
 
@@ -124,13 +180,18 @@ public class MainActivity extends AppCompatActivity {
             });
         });
 
+         */
+
         // ------------------- Process Photo Button
-        Button processPhotoButton = findViewById(R.id.button_process);
+        //Button processPhotoButton = findViewById(R.id.button_process);
         // dynamic filter application
+        /*
         processPhotoButton.setOnClickListener(v -> {
             int seekBarValue = seekBar.getProgress();
             applyFilterOfChoice(selectedFilter, seekBarValue);
         });
+
+         */
 
         /*
         // only greyscale
@@ -150,6 +211,154 @@ public class MainActivity extends AppCompatActivity {
         });
         */
     }
+
+    // ── Bind all views from the layout ────────────────────────────────────
+    private void bindViews() {
+        imageView      = findViewById(R.id.image_view);
+        filterSpinner  = findViewById(R.id.filter_spinner);
+        seekBar        = findViewById(R.id.seekBar2);
+        seekValueLabel = findViewById(R.id.seek_value_label);
+        buttonPhoto    = findViewById(R.id.button_photo);
+        buttonProcess  = findViewById(R.id.button_process);
+        progressBar    = findViewById(R.id.progressBar);
+    }
+
+    // ── Spinner setup ─────────────────────────────────────────────────────
+    private void setupFilterSpinner() {
+        // Dark-themed adapter: use simple_spinner_item and override text color in code
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                this,
+                android.R.layout.simple_spinner_item,
+                FILTER_OPTIONS
+        ) {
+            // Style the closed spinner text
+            @Override
+            public View getView(int position, View convertView, android.view.ViewGroup parent) {
+                View view = super.getView(position, convertView, parent);
+                ((TextView) view).setTextColor(0xFFDDDDDD); // light gray
+                ((TextView) view).setTextSize(13);
+                return view;
+            }
+
+            // Style the dropdown list items
+            @Override
+            public View getDropDownView(int position, View convertView, android.view.ViewGroup parent) {
+                View view = super.getDropDownView(position, convertView, parent);
+                ((TextView) view).setTextColor(0xFFDDDDDD);
+                ((TextView) view).setBackgroundColor(0xFF1E1E2A);
+                ((TextView) view).setPadding(24, 20, 24, 20);
+                return view;
+            }
+        };
+
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        filterSpinner.setAdapter(adapter);
+
+        filterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedFilter = FILTER_OPTIONS[position];
+
+                // Update the seekbar label to reflect what the value means
+                // for each filter type (clusters for k-means, block size for pixelation, etc.)
+                switch (position) {
+                    case 0: // K-means — cluster count 2–22
+                        setSeekBarRange(2, 22);
+                        break;
+                    case 1: // Pixelation — block size 2–40px
+                        setSeekBarRange(2, 40);
+                        break;
+                    case 2: // Grayscale — 1–2 (no real range needed)
+                        setSeekBarRange(1, 2);
+                        break;
+                    case 3: // Interpolation — 0–5
+                        setSeekBarRange(0, 5);
+                        break;
+                    default:
+                        setSeekBarRange(2, 22);
+                        break;
+                }
+
+                // Reset to midpoint and update label
+                int mid = seekMin + (seekBar.getMax() / 2);
+                setSeekBarValue(mid);
+                seekValueLabel.setText(String.valueOf(mid));
+            }
+
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+
+    // ── SeekBar: update live label on every move ──────────────────────────
+    private void setupSeekBar() {
+        // Set initial label to match the XML default progress of 10
+        seekValueLabel.setText(String.valueOf(seekBar.getProgress()));
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                // Update the large purple number in real time
+                currentIntensity = progress;
+                seekValueLabel.setText(String.valueOf(progress));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+    }
+
+
+    // ── Buttons ───────────────────────────────────────────────────────────
+    private void setupButtons() {
+
+        // Camera button: launch camera or photo picker
+        buttonPhoto.setOnClickListener(v -> {
+            // TODO: replace with your existing camera / gallery intent logic
+            // Example:
+            // Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            // startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
+            takePhotoAsBitmap(bitmap -> {
+                currentImage = bitmap;
+                ImageView imageView = findViewById(R.id.image_view);
+                imageView.setImageBitmap(bitmap);
+            });
+        });
+
+        // Apply filter button
+        buttonProcess.setOnClickListener(v -> {
+            applyFilter(selectedFilter, currentIntensity);
+        });
+    }
+
+
+    // ── Filter application ────────────────────────────────────────────────
+    private void applyFilter(String filter, int intensity) {
+        // Show spinner, disable button while processing
+        progressBar.setVisibility(View.VISIBLE);
+        buttonProcess.setEnabled(false);
+
+        // Trying just old method instead of async
+        applyFilterOfChoice(filter, intensity);
+
+        // TODO: run your actual filter processing here (ideally in an AsyncTask
+        // or coroutine so the UI thread isn't blocked).
+        // Example stub using a Handler to simulate async work:
+        imageView.postDelayed(() -> {
+            // -- swap in your processed bitmap here --
+            // imageView.setImageBitmap(processedBitmap);
+
+            progressBar.setVisibility(View.GONE);
+            buttonProcess.setEnabled(true);
+        }, 500);
+    }
+
 
     private void takePhotoAsBitmap(OnBitmapReady callback) {
         cameraClient.takePicture(new SonyCameraClient.OnPictureTakenListener() {
@@ -188,6 +397,7 @@ public class MainActivity extends AppCompatActivity {
         imageView.setImageBitmap(currentImage);
     }
 
+    //TODO This may of been replaced. Verify and remove if not needed.
     private void setLoading(boolean loading) {
 
         Button processButton = findViewById(R.id.button_process);
@@ -326,7 +536,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> setLoading(false));
         });
         // Wrong place: Animators may only be run on Looper threads
-        setLoading(false);
+        //setLoading(false);
     }
 
     private void applyGrayScale() {
@@ -481,6 +691,7 @@ public class MainActivity extends AppCompatActivity {
     [x] Extract RGB pixel values
     [x] Create RGB vectors
     [x] Implement Euclidean distance function
+    [x] Redesign UI
 
     K-MEANS
     [x] Randomly initialize centroids
@@ -499,8 +710,8 @@ public class MainActivity extends AppCompatActivity {
 
     IMAGE PROCESSING
     [x] Move grayscale filter into ImageProcessor
-    [] Add image resizing helper
-    [] Add bitmap copy utilities
+    [] Add image resizing helper?
+    [] Add bitmap copy utilities?
     [] Add RGB normalization helper
 
     SONY CAMERA
@@ -522,7 +733,7 @@ public class MainActivity extends AppCompatActivity {
     PERFORMANCE
     [] try to get around getPixel() bottleneck?
     [x] Move image processing off UI thread
-    [] Add downsampling for large images
+    [] Add downsampling for large images?
 
     FUTURE
     [x] Add pixelizer to images
