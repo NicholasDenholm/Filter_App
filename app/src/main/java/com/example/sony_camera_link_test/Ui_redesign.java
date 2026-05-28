@@ -13,7 +13,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-public class MainActivity extends AppCompatActivity {
+public class Ui_redesign extends AppCompatActivity {
 
     // ── UI references ──────────────────────────────────────────────────────
     private ImageView imageView;
@@ -97,6 +97,7 @@ public class MainActivity extends AppCompatActivity {
 
                 // Update the seekbar label to reflect what the value means
                 // for each filter type (clusters for k-means, block size for pixelation, etc.)
+                /*
                 switch (position) {
                     case 0: // K-means
                         // clusters range 2–22 makes sense, keep as-is
@@ -122,6 +123,8 @@ public class MainActivity extends AppCompatActivity {
                 int mid = (seekBar.getMin() + seekBar.getMax()) / 2;
                 seekBar.setProgress(mid);
                 seekValueLabel.setText(String.valueOf(mid));
+
+                 */
             }
 
             @Override
