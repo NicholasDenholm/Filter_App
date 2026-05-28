@@ -5,8 +5,11 @@ import static com.example.sony_camera_link_test.SonyCameraClient.CAMERA_URL;
 import android.Manifest;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,20 +31,30 @@ import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ImageCapture;
+import androidx.camera.core.ImageCaptureException;
+import androidx.camera.core.ImageProxy;
+import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.bumptech.glide.Glide;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -52,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
     private SeekBar seekBar;
     private TextView seekValueLabel;
     private Button buttonPhoto;
+    private Button buttonPhoneCamera;
     private Button buttonProcess;
     private ProgressBar progressBar;
 
@@ -63,17 +77,31 @@ public class MainActivity extends AppCompatActivity {
     private Bitmap currentImage;
     private String CurrentImageUrl;
 
+    private boolean isCameraCapturing = false;
+
+    /*
+        GUIDE: To add more filters:
+    1. add the name of the filter below
+    2. set range for seekbar in setupFilterSpinner
+    3. write new method called: apply[yourFilterName]
+    4. Make new case for the filter in applyFilterOfChoice
+    5. Test it out
+    */
+
     // Filter options shown in the spinner
+
     private static final String[] FILTER_OPTIONS = {
-            "K-means clustering",
+            "K-Means",
             "Pixelate",
             "Grayscale",
-            "Interlaced"
+            "Interlaced",
+            "FloydSteinbergDithering",
+            "ColourBlind"
     };
 
     // Track the minimum offset manually instead of using SeekBar.setMin() (API 26+).
     // The SeekBar internally always runs from 0; add seekMin when reading progress.
-    private int seekMin = 2;
+    private int seekMin = 0;
 
     // Helper: set the seekbar range without using setMin/getMin
     private void setSeekBarRange(int min, int max) {
@@ -98,8 +126,33 @@ public class MainActivity extends AppCompatActivity {
 
     // ── Camera Clients ─────────────────────────────────────────────────────
     private SonyCameraClient cameraClient;
+    private ImageCapture imageCapture;
 
 
+    // Then handle the result
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 100 && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            setupCamera();
+        } else {
+            Log.e("CAMERA", "Camera permission denied");
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Shut down CameraX cleanly so it releases the hardware
+        ProcessCameraProvider.getInstance(this).addListener(() -> {
+            try {
+                ProcessCameraProvider.getInstance(this).get().unbindAll();
+            } catch (Exception e) {
+                Log.e("CAMERA", "Error releasing camera", e);
+            }
+        }, ContextCompat.getMainExecutor(this));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -109,6 +162,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.ui_redesign);
 
         cameraClient = new SonyCameraClient();
+
 
         // Checks the version so that the proper save function is called
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -126,14 +180,24 @@ public class MainActivity extends AppCompatActivity {
         });
          */
 
+
+
         try {
             //  Do the setup
             bindViews();
             setupFilterSpinner();
             setupSeekBar();
             setupButtons();
-        }
-        catch(Exception e) {
+            //setupCamera();
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                    == PackageManager.PERMISSION_GRANTED) {
+                setupCamera();
+            } else {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.CAMERA}, 100);
+            }
+
+        } catch (Exception e) {
             Log.e("SETUP FAILED", "ERROR: " + e);
         }
 
@@ -214,13 +278,14 @@ public class MainActivity extends AppCompatActivity {
 
     // ── Bind all views from the layout ────────────────────────────────────
     private void bindViews() {
-        imageView      = findViewById(R.id.image_view);
-        filterSpinner  = findViewById(R.id.filter_spinner);
-        seekBar        = findViewById(R.id.seekBar2);
+        imageView = findViewById(R.id.image_view);
+        filterSpinner = findViewById(R.id.filter_spinner);
+        seekBar = findViewById(R.id.seekBar2);
         seekValueLabel = findViewById(R.id.seek_value_label);
-        buttonPhoto    = findViewById(R.id.button_photo);
-        buttonProcess  = findViewById(R.id.button_process);
-        progressBar    = findViewById(R.id.progressBar);
+        buttonPhoto = findViewById(R.id.button_photo);
+        buttonPhoneCamera = findViewById(R.id.button_phone_camera);
+        buttonProcess = findViewById(R.id.button_process);
+        progressBar = findViewById(R.id.progressBar);
     }
 
     // ── Spinner setup ─────────────────────────────────────────────────────
@@ -272,7 +337,13 @@ public class MainActivity extends AppCompatActivity {
                         setSeekBarRange(1, 2);
                         break;
                     case 3: // Interpolation — 0–5
-                        setSeekBarRange(0, 5);
+                        setSeekBarRange(2, 10);
+                        break;
+                    case 4: // FloydSteinbergDithering — 0–5
+                        setSeekBarRange(2, 10);
+                        break;
+                    case 5:
+                        setSeekBarRange(0,5);
                         break;
                     default:
                         setSeekBarRange(2, 22);
@@ -287,7 +358,8 @@ public class MainActivity extends AppCompatActivity {
 
 
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
         });
     }
 
@@ -295,22 +367,26 @@ public class MainActivity extends AppCompatActivity {
     // ── SeekBar: update live label on every move ──────────────────────────
     private void setupSeekBar() {
         // Set initial label to match the XML default progress of 10
-        seekValueLabel.setText(String.valueOf(seekBar.getProgress()));
+        //seekValueLabel.setText(String.valueOf(seekBar.getProgress()));
+        // used to ensure backwards compatibility
+        currentIntensity = getSeekBarValue();
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 // Update the large purple number in real time
-                currentIntensity = progress;
+                currentIntensity = getSeekBarValue();
                 seekValueLabel.setText(String.valueOf(progress));
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
 
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
         });
     }
 
@@ -324,7 +400,7 @@ public class MainActivity extends AppCompatActivity {
             // Example:
             // Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
             // startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
-            takePhotoAsBitmap(bitmap -> {
+            takePhotoAsBitmapSony(bitmap -> {
                 currentImage = bitmap;
                 ImageView imageView = findViewById(R.id.image_view);
                 imageView.setImageBitmap(bitmap);
@@ -335,21 +411,51 @@ public class MainActivity extends AppCompatActivity {
         buttonProcess.setOnClickListener(v -> {
             applyFilter(selectedFilter, currentIntensity);
         });
+
+        buttonPhoneCamera.setOnClickListener(v -> {
+            takePhotoAsBitmap(bitmap -> {
+                currentImage = bitmap;
+                imageView.setImageBitmap(bitmap);
+            });
+        });
     }
 
+
+    private void setupCamera() {
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
+                ProcessCameraProvider.getInstance(this);
+
+        cameraProviderFuture.addListener(() -> {
+            try {
+                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+                imageCapture = new ImageCapture.Builder().build();
+
+                cameraProvider.unbindAll();
+                cameraProvider.bindToLifecycle(
+                        this,                                    // lifecycle owner
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        imageCapture
+                );
+            } catch (Exception e) {
+                Log.e("CAMERA SETUP", "Failed to bind camera", e);
+            }
+        }, ContextCompat.getMainExecutor(this));
+    }
 
     // ── Filter application ────────────────────────────────────────────────
     private void applyFilter(String filter, int intensity) {
         // Show spinner, disable button while processing
-        progressBar.setVisibility(View.VISIBLE);
-        buttonProcess.setEnabled(false);
+        //progressBar.setVisibility(View.VISIBLE);
+        //buttonProcess.setEnabled(false);
 
         // Trying just old method instead of async
+        setLoading(true);
         applyFilterOfChoice(filter, intensity);
 
         // TODO: run your actual filter processing here (ideally in an AsyncTask
         // or coroutine so the UI thread isn't blocked).
         // Example stub using a Handler to simulate async work:
+        /*
         imageView.postDelayed(() -> {
             // -- swap in your processed bitmap here --
             // imageView.setImageBitmap(processedBitmap);
@@ -357,10 +463,51 @@ public class MainActivity extends AppCompatActivity {
             progressBar.setVisibility(View.GONE);
             buttonProcess.setEnabled(true);
         }, 500);
+
+         */
     }
 
-
     private void takePhotoAsBitmap(OnBitmapReady callback) {
+        if (imageCapture == null) {
+            Log.e("CAMERA", "Camera not ready");
+            return;
+        }
+
+        isCameraCapturing = true;
+
+        imageCapture.takePicture(
+                Executors.newSingleThreadExecutor(),
+                new ImageCapture.OnImageCapturedCallback() {
+
+                    @Override
+                    public void onCaptureSuccess(ImageProxy image) {
+                        ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+                        byte[] bytes = new byte[buffer.remaining()];
+                        buffer.get(bytes);
+                        Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                        image.close();
+
+                        int rotation = image.getImageInfo().getRotationDegrees();
+                        Matrix matrix = new Matrix();
+                        matrix.postRotate(rotation);
+                        Bitmap rotated = Bitmap.createBitmap(
+                                bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true
+                        );
+
+                        isCameraCapturing = false;
+                        // ← wrap callback in runOnUiThread so callers can safely touch views
+                        runOnUiThread(() -> callback.onReady(rotated));
+                    }
+
+                    @Override
+                    public void onError(ImageCaptureException e) {
+                        Log.e("CAMERA", "Failed to take picture", e);
+                    }
+                }
+        );
+    }
+
+    private void takePhotoAsBitmapSony(OnBitmapReady callback) {
         cameraClient.takePicture(new SonyCameraClient.OnPictureTakenListener() {
 
             @Override
@@ -398,28 +545,40 @@ public class MainActivity extends AppCompatActivity {
     }
 
     //TODO This may of been replaced. Verify and remove if not needed.
+    // It is used in the applyfilter method? Is this needed?
     private void setLoading(boolean loading) {
-
-        Button processButton = findViewById(R.id.button_process);
-        ProgressBar progressBar = findViewById(R.id.progressBar);
+        // Apply changes to already created button!
+        //Button processButton = findViewById(R.id.button_process);
+        //ProgressBar progressBar = findViewById(R.id.progressBar);
 
         if (loading) {
-
-            processButton.setEnabled(false);
-            processButton.setText("Processing...");
-
+            buttonProcess.setEnabled(false);
+            buttonProcess.setText("Processing...");
             progressBar.setVisibility(View.VISIBLE);
 
         } else {
-
-            processButton.setEnabled(true);
-            processButton.setText("Process Photo");
-
+            buttonProcess.setEnabled(true);
+            buttonProcess.setText("Apply Filter");
             progressBar.setVisibility(View.GONE);
         }
     }
 
+    // ── Async work ──────────────────────────────────────────────
+    // background: the heavy work — runs on worker thread, returns a Bitmap
+    // onDone:     UI update — runs on main thread after background finishes
+    private void runAsync(Supplier<Bitmap> background, Consumer<Bitmap> onDone) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            Bitmap result = background.get();
+            runOnUiThread(() -> onDone.accept(result));
+        });
+    }
+
+    public interface OnFilterDoneCallback {
+        void onDone();
+    }
+
     // ------------------- Saving Images -------------------
+    // TODO maybe move this to a IO class
     private void saveBitmapToGallery(Bitmap bitmap) {
         String filename = "Sony_" + selectedFilter + "_" + System.currentTimeMillis() + ".png";
 
@@ -505,51 +664,113 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ------------------- Application of Filters -------------------
+    /*
+    private void generalFilterMethod() {
+        if (currentImage == null) {
+            Log.e("APPLY FILTER", "No image provided");
+            return;
+        }
+
+        runAsync(()-> {
+                    return ImageProcessor.toFILTERNAME(currentImage);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                }
+        );
+    }
+
+     */
+
     private void applyFilterOfChoice(String filter, int k) {
-        setLoading(true);
+        OnFilterDoneCallback onDone = () -> runOnUiThread(() -> setLoading(false));
+
         ExecutorService executor = Executors.newSingleThreadExecutor();
-
         executor.execute(() -> {
-
-            //Bitmap result = null;
-
             if (filter.equals("K-Means")) {
-                Log.d("SEEK BAR", "k in k-means is " + k);
-                applyKMeansThreaded(k);
+                Log.v("SEEK BAR", "k in k-means is " + k);
+                applyKMeansThreaded(k, onDone);
             }
-
             else if (filter.equals("Pixelate")) {
-                Log.d("SEEK BAR", "pixelation strength is " + k);
-                applyPixelated(k);
+                Log.v("SEEK BAR", "pixelation strength is " + k);
+                applyPixelated(k, onDone);
             }
-
             else if (filter.equals("Grayscale")) {
-                applyGrayScale();
+                applyGrayScale(onDone);
             }
             else if (filter.equals("Interlaced")) {
-                captureInterlaced(k);
+                captureInterlaced(k, onDone);
             }
-
-
+            else if (filter.equals("FloydSteinbergDithering")) {
+                applyFloydSteinbergDithering(k, onDone);
+            }
+            else if (filter.equals("ColourBlind")) {
+                applyColourBlind(k, onDone);
+            }
+            /*
             // Each method handles the UI filtered image display
             // ALWAYS return to UI thread at the end
             runOnUiThread(() -> setLoading(false));
+             */
         });
         // Wrong place: Animators may only be run on Looper threads
         //setLoading(false);
     }
 
-    private void applyGrayScale() {
+    private void applyGrayScale(OnFilterDoneCallback onDone) {
         if (currentImage == null) {
-            Log.e("APPLY FILTER", "No image provided");
+            Log.e("APPLY GREYSCALE", "No image provided");
             return;
         }
-        Bitmap greyScaleImg = ImageProcessor.toGrayScale(currentImage);
 
-        runOnUiThread(() -> {
-            setCurrentImage(greyScaleImg);
-            saveBitmapToGallery(greyScaleImg);
-        });
+        runAsync(()-> {
+                    return ImageProcessor.toGrayScale(currentImage);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
+    }
+
+    private void applyFloydSteinbergDithering(int kDither, OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY GREYSCALE", "No image provided");
+            return;
+        }
+
+        runAsync(()-> {
+                    Bitmap scaled = scaleBitmap(currentImage, 800);
+                    //return ImageProcessor.deepFriedEffect(scaled);
+                    //return ImageProcessor.dither(scaled);
+                    return ImageProcessor.createDitheringDistpacter(scaled, kDither);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
+    }
+
+    private void applyColourBlind(int kBlind, OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY GREYSCALE", "No image provided");
+            return;
+        }
+
+        runAsync(()-> {
+                    Bitmap scaled = scaleBitmap(currentImage, 800);
+                    return ImageProcessor.toColourBlind(scaled, kBlind);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
     }
 
     private void applyKMeans() {
@@ -582,10 +803,52 @@ public class MainActivity extends AppCompatActivity {
         setCurrentImage(kMeansBMP);
     }
 
-    private void applyKMeansThreaded(int k_for_kmeans) {
+    private void applyKMeansThreaded(int k_for_kmeans, OnFilterDoneCallback onDone) {
+        // No new executor needed — this method is already called from a worker thread
 
         if (currentImage == null) {
             Log.e("APPLY KMEANS", "No image provided");
+            onDone.onDone(); // ← don't forget to unblock the button on early return too
+            return;
+        }
+        runAsync(() -> {
+                    // worker thread — your existing logic unchanged
+                    Bitmap scaled = scaleBitmap(currentImage, 1000);
+                    ImageProcessor imgProcessor = new ImageProcessor();
+                    // Extract pixels
+                    List<float[]> points = imgProcessor.extractRGBValues(scaled);
+
+                    // Run KMeans (heavy work)
+                    KMeans kmeans = new KMeans(points, k_for_kmeans);
+                    kmeans.run();
+
+                    // Rebuild image
+                    return imgProcessor.rebuildFromClusters(scaled.getWidth(), scaled.getHeight(), points, kmeans.getCentroids(), kmeans.getAssignments());
+                    },
+                    result -> {
+                        // Update UI on main thread, then signal completion
+                        setCurrentImage(result);
+                        saveBitmapToGallery(result);
+                        onDone.onDone(); // this activates: setLoading(false) only after image is displayed
+        }
+        );
+    }
+
+    private Bitmap scaleBitmap(Bitmap source, int maxSize) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+        float scale = Math.min((float) maxSize / width, (float) maxSize / height);
+        if (scale >= 1f) return source; // already small enough, don't upscale
+        return Bitmap.createScaledBitmap(source,
+                Math.round(width * scale),
+                Math.round(height * scale), true);
+    }
+
+    private void applyKMeansThreadedNoLoading(int k_for_kmeans, OnFilterDoneCallback onDone) {
+
+        if (currentImage == null) {
+            Log.e("APPLY KMEANS", "No image provided");
+            onDone.onDone();
             return;
         }
 
@@ -618,7 +881,24 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void applyPixelated(int pixelationStrength) {
+    private void applyPixelated(int pixelationStrength, OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY PIXELATE", "No image provided");
+            return;
+        }
+        runAsync(() -> {
+                ImageProcessor imgProcessor = new ImageProcessor();
+                return imgProcessor.pixelateImage(currentImage, pixelationStrength);
+            },
+            result -> {
+                setCurrentImage(result);
+                saveBitmapToGallery(result);
+                onDone.onDone();
+            }
+        );
+    }
+
+    private void applyPixelatedNoThread(int pixelationStrength) {
 
         if (currentImage == null) {
             Log.e("APPLY KMEANS", "No image provided");
@@ -635,7 +915,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private void captureInterlaced(int delay) {
+    private void captureInterlaced(int delay, OnFilterDoneCallback onDone) {
         ImageProcessor imgProcessor = new ImageProcessor();
         // Dictates which row will be interlaced, every even row (2), or every 20th...
         int modValue = delay;
@@ -652,11 +932,12 @@ public class MainActivity extends AppCompatActivity {
                         currentImage = resultInterlaced;
                         setCurrentImage(resultInterlaced);
                         saveBitmapToGallery(resultInterlaced);
+                        onDone.onDone();
                     });
 
                 });
             // Tried delay * 500 --> too short, try static 1500ms
-            }, 2 * 750);
+            }, 2 * 850);
         });
 
 
