@@ -75,6 +75,7 @@ public class MainActivity extends AppCompatActivity {
     // Default on startup
     private String selectedFilter = "K-means";
     private int currentIntensity = 10;
+    private FilterConfig currentFilterConfig;
 
     private Bitmap currentImage;
     private String CurrentImageUrl;
@@ -91,7 +92,6 @@ public class MainActivity extends AppCompatActivity {
     */
 
     // Filter options shown in the spinner
-
     private static final String[] FILTER_OPTIONS = {
             "K-Means",
             "Pixelate",
@@ -164,10 +164,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         //setContentView(R.layout.activity_main);
-        setContentView(R.layout.ui_redesign);
+        setContentView(R.layout.ui_redesign); // This is the new UI design
 
         cameraClient = new SonyCameraClient();
-
 
         // Checks the version so that the proper save function is called
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -185,14 +184,14 @@ public class MainActivity extends AppCompatActivity {
         });
          */
 
-
-
         try {
             //  Do the setup
             bindViews();
             setupFilterSpinner();
+            currentFilterConfig = new FilterConfig(currentIntensity, null);
             setupSeekBar();
             setupButtons();
+
             //setupCamera();
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                     == PackageManager.PERMISSION_GRANTED) {
@@ -330,25 +329,33 @@ public class MainActivity extends AppCompatActivity {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedFilter = FILTER_OPTIONS[position];
 
+                // Set the variant (if any) for each filter type
+                // Set the default intensity or option (enum'd)
                 // Update the seekbar label to reflect what the value means
                 // for each filter type (clusters for k-means, block size for pixelation, etc.)
                 switch (position) {
+                    // TODO Clean up the options and k comments and code here
                     case 0: // K-means — cluster count 2–22
+                        currentFilterConfig.setVariant(null);
                         setSeekBarRange(2, 22);
                         break;
                     case 1: // Pixelation — block size 2–40px
+                        currentFilterConfig.setVariant(null);
                         setSeekBarRange(2, 40);
                         break;
                     case 2: // Grayscale — 1–2 (no real range needed)
+                        currentFilterConfig.setVariant(null);
                         setSeekBarRange(1, 2);
                         break;
-                    case 3: // Interpolation — 0–5
+                    case 3: // Interlace — 0–5
+                        currentFilterConfig.setVariant(InterlaceFilterOption.interlaceVerticalStripes);
                         setSeekBarRange(2, 10);
                         break;
                     case 4: // FloydSteinbergDithering — 0–5
+                        currentFilterConfig.setVariant(DitherFilterOption.dither);
                         setSeekBarRange(2, 10);
                         break;
-                    case 5:
+                    case 5: // colour blind — 0–5 options?
                         setSeekBarRange(0,5);
                         break;
                     default:
@@ -359,6 +366,7 @@ public class MainActivity extends AppCompatActivity {
                 // Reset to midpoint and update label
                 int mid = seekMin + (seekBar.getMax() / 2);
                 setSeekBarValue(mid);
+                currentFilterConfig.setIntensity(mid);
                 seekValueLabel.setText(String.valueOf(mid));
             }
 
@@ -395,7 +403,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-
 
     // ── Buttons ───────────────────────────────────────────────────────────
     private void setupButtons() {
