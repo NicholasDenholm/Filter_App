@@ -43,6 +43,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.bumptech.glide.Glide;
+import com.google.android.material.button.MaterialButton;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
@@ -68,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private Button buttonPhoneCamera;
     private Button buttonProcess;
     private ProgressBar progressBar;
+    private MaterialButton switchButton;
 
     // ── State ──────────────────────────────────────────────────────────────
     // Default on startup
@@ -128,6 +130,9 @@ public class MainActivity extends AppCompatActivity {
     private SonyCameraClient cameraClient;
     private ImageCapture imageCapture;
 
+    // Default lens is back
+    private int currentLensFacing = CameraSelector.LENS_FACING_BACK;
+    private ProcessCameraProvider cameraProvider;
 
     // Then handle the result
     @Override
@@ -286,6 +291,7 @@ public class MainActivity extends AppCompatActivity {
         buttonPhoneCamera = findViewById(R.id.button_phone_camera);
         buttonProcess = findViewById(R.id.button_process);
         progressBar = findViewById(R.id.progressBar);
+        switchButton = findViewById(R.id.button_switch_camera);
     }
 
     // ── Spinner setup ─────────────────────────────────────────────────────
@@ -418,28 +424,51 @@ public class MainActivity extends AppCompatActivity {
                 imageView.setImageBitmap(bitmap);
             });
         });
+        Log.d("CAMERA", "Binding camera");
+        switchButton.setOnClickListener(v -> switchCamera());
     }
 
-
+    // ── Cameras ───────────────────────────────────────────────────────────
     private void setupCamera() {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
                 ProcessCameraProvider.getInstance(this);
 
         cameraProviderFuture.addListener(() -> {
             try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
+                cameraProvider = cameraProviderFuture.get();
                 imageCapture = new ImageCapture.Builder().build();
+                Log.d("CAMERA", "Binding camera");
+                bindCameraUseCases();
 
-                cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(
-                        this,                                    // lifecycle owner
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        imageCapture
-                );
             } catch (Exception e) {
-                Log.e("CAMERA SETUP", "Failed to bind camera", e);
+                Log.e("CAMERA SETUP", "Failed to setup camera", e);
             }
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void bindCameraUseCases() {
+        if (cameraProvider == null) return;
+
+        CameraSelector cameraSelector = new CameraSelector.Builder().requireLensFacing(currentLensFacing).build();
+
+        try {
+            cameraProvider.unbindAll();
+            cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture);
+        } catch (Exception e) {
+            Log.e("CAMERA BIND", "Failed to bind camera", e);
+        }
+
+    }
+
+    private void switchCamera() {
+
+        if (currentLensFacing == CameraSelector.LENS_FACING_BACK) {
+            currentLensFacing = CameraSelector.LENS_FACING_FRONT;
+        } else {
+            currentLensFacing = CameraSelector.LENS_FACING_BACK;
+        }
+
+        bindCameraUseCases();
     }
 
     // ── Filter application ────────────────────────────────────────────────
