@@ -1,5 +1,14 @@
 package com.example.sony_camera_link_test;
 
+import static com.example.sony_camera_link_test.MathUtils.DEUTERANOPIA;
+import static com.example.sony_camera_link_test.MathUtils.DOG_SIMULATION;
+import static com.example.sony_camera_link_test.MathUtils.LMS_TO_RGB;
+import static com.example.sony_camera_link_test.MathUtils.PROTANOPIA;
+import static com.example.sony_camera_link_test.MathUtils.RGB_TO_LMS;
+import static com.example.sony_camera_link_test.MathUtils.TRITANOPIA;
+import static com.example.sony_camera_link_test.MathUtils.linearToSrgb;
+import static com.example.sony_camera_link_test.MathUtils.multiplyMatrixAndVector;
+import static com.example.sony_camera_link_test.MathUtils.srgbToLinear;
 import static java.lang.Math.round;
 
 import android.graphics.Bitmap;
@@ -8,8 +17,10 @@ import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
+import android.util.Log;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -73,6 +84,16 @@ public class ImageProcessor {
         return rgbValues;
     };
 
+    public static Bitmap scaleBitmap(Bitmap source, int maxSize) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+        float scale = Math.min((float) maxSize / width, (float) maxSize / height);
+        if (scale >= 1f) return source; // already small enough, don't upscale
+        return Bitmap.createScaledBitmap(source,
+                Math.round(width * scale),
+                Math.round(height * scale), true);
+    }
+
     // ------ GreyScale ------------------------------------------------------
     public static Bitmap toGrayScale(Bitmap src) {
         Bitmap bmp = Bitmap.createBitmap(src.getWidth(), src.getHeight(), Bitmap.Config.ARGB_8888);
@@ -100,13 +121,38 @@ public class ImageProcessor {
     // TODO could also do a type of Boustrophedon transform (meandering through pixels)
 
     public static Bitmap createDitheringDistpacter(Bitmap src, int k) {
-        switch (k % 5) {
-            case 0: return dither(src);
-            case 1: return dither(toGrayScale(src));
-            case 2: return deepFriedEffect(src);
-            case 3: return useFloydSteinbergDithering(src, 0);
-            case 4: return useFloydSteinbergDithering(src, 1);
-            default: return dither(src);
+        Log.v("DITHER DISPATCHER", " k % 5 is: " + k % 5);
+
+        // TODO Rename all these below case functions to match the commented discription
+        switch (k - 2) {
+
+            case 0: // colourful FS dither
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing dither");
+                return dither(src);
+
+            case 1: // Newspaper FS dither
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing dither --> grayscale");
+                return dither(toGrayScale(src));
+
+            case 2: // Bright Glitchy
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing deep fried");
+                return deepFriedEffect(src);
+
+            case 3: // DeepFried
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing FS option 0");
+                return useFloydSteinbergDithering(src, 0);
+
+            case 4: // Spooky Dark
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing FS option 1");
+                return useFloydSteinbergDithering(src, 1);
+
+            default:
+                return dither(src);
         }
     }
 
@@ -458,106 +504,6 @@ public class ImageProcessor {
     }
      */
 
-    // ---- Luninace
-    // Bradford 3x3 matrix to convert XYZ to LMS
-    private static final double[][] M_BRADFORD = {
-            { 0.8951,  0.2664, -0.1614},
-            {-0.7502,  1.7135,  0.0367},
-            { 0.0389, -0.0685,  1.0296}
-    };
-
-    // Inverse Bradford matrix to convert LMS back to XYZ
-    private static final double[][] M_BRADFORD_INV = {
-            { 0.986992, -0.147054,  0.159963},
-            { 0.432305,  0.518360,  0.049291},
-            {-0.008528,  0.040043,  0.968487}
-    };
-
-    public static float[] srgbLuminaceCalc(float r, float g, float b) {
-        /*
-        Luma coefficients: from https://en.wikipedia.org/wiki/Rec._709#Luma_coefficients
-            When encoding Y’CBCR video, BT.709 creates gamma-encoded luma (Y’) ...
-            using matrix coefficients 0.2126, 0.7152, and 0.0722 ...
-            (together they add to 1)
-         */
-        float luminanceR = 0.2126f * r;
-        float luminanceG = 0.7152f * g;
-        float luminanceB = 0.0722f * b;
-
-        return new float[] { luminanceR, luminanceG, luminanceB };
-    }
-
-
-    // ---- RGB To LMS
-    private static final float[][] RGB_TO_LMS = {
-            { 0.4002f, 0.7076f, -0.0808f },
-            { -0.2263f, 1.1653f,  0.0457f },
-            { 0.0000f, 0.0000f,  0.9182f }
-    };
-
-    private static final float[][] LMS_TO_RGB = {
-            { 1.8599364f, -1.1293816f, 0.2198974f },
-            { 0.3611914f,  0.6388125f, 0.0000064f },
-            { 0.0000000f,  0.0000000f, 1.0890636f }
-    };
-
-    // ------ Red blind
-    private static final float[][] PROTANOPIA = {
-            { 0.0f, 1.05118294f, -0.05116099f },
-            { 0.0f, 1.0f,        0.0f        },
-            { 0.0f, 0.0f,        1.0f        }
-    };
-
-    // ---- Green blind
-    private static final float[][] DEUTERANOPIA = {
-            { 1.0f, 0.0f,        0.0f        },
-            { 0.9513092f, 0.0f,  0.04866992f },
-            { 0.0f, 0.0f,        1.0f        }
-    };
-
-    // ----- Blue blind
-    private static final float[][] TRITANOPIA = {
-            { 1.0f, 0.0f, 0.0f },
-            { 0.0f, 1.0f, 0.0f },
-            { -0.86744736f, 1.86727089f, 0.0f }
-    };
-
-    private static final float[][] DOG_SIMULATION = {
-            { 0.625f, 0.375f, 0.0f },
-            { 0.700f, 0.300f, 0.0f },
-            { 0.0f,   0.300f, 0.700f }
-    };
-
-
-    public static float[] multiplyMatrixAndVector(float[][] matrix, float[] vector) {
-        float[] result = new float[3];
-        for (int i = 0; i < 3; i++ ) {
-            for (int j = 0; j < 3; j++) {
-                result[i] += matrix[i][j] * vector[j];
-            }
-        }
-        return result;
-
-    }
-
-
-
-    static float srgbToLinear(float c) {
-        if (c <= 0.04045f) {
-            return c / 12.92f;
-        } else {
-            return (float)Math.pow((c + 0.055f) / 1.055f, 2.4);
-        }
-    }
-
-    static float linearToSrgb(float c) {
-        if (c <= 0.0031308f) {
-            return 12.92f * c;
-        } else {
-            return 1.055f * (float)Math.pow(c, 1.0 / 2.4) - 0.055f;
-        }
-    }
-
     public static int simulateColorBlindness(int pixel, float[][] matrix) {
 
         // Extract normalized sRGB
@@ -731,13 +677,40 @@ public class ImageProcessor {
         // Core algo:
         //      if (mask == 0) pixel from A
         //          else pixel from B
-        switch (k % 5) {
-            case 0: return interlaceCheckered(a, b, k);
-            case 1: return interlaceVerticalStripes(a, b, k);
-            case 2: return interlaceHalfHalf(a, b);
-            case 3: return interlaceNoise(a, b, k);
-            case 4: return interlaceSwirl(a, b, k);
-            default: return interlaceCheckered(a, b, k);
+        Log.v("INTERLACED DISPATCHER", "int k is: " + k);
+        switch (k - 2) {
+            case 0:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceCheckered");
+                return interlaceCheckered(a, b, k);
+
+            case 1:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceVerticalStripes");
+                return interlaceVerticalStripes(a, b, k);
+
+            case 2:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceHalfHalf");
+                return interlaceHalfHalf(a, b);
+
+            case 3:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceNoise");
+                return interlaceNoise(a, b, k);
+
+            case 4:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceSwirl");
+                return interlaceSwirl(a, b, k);
+
+            case 5:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceGridPattern");
+                return interlaceGridPattern(a, b, k);
+
+            default:
+                return interlaceCheckered(a, b, k);
         }
     }
 
@@ -871,12 +844,16 @@ public class ImageProcessor {
         return out;
     }
 
-    // TODO Test the getPattern and each interlaced pattern!!
+    // [X] Test the getPattern and each interlaced pattern!!
+    // TODO They are all basically the same look... Maybe expand the grid size? Process in chunks?
     private int[][] getPattern(int k) {
-        switch (k % 3) {
+        Log.v("GET PATTERN", "int k is: " + k);
+        //k += 2;
+        switch (k - 4) {
 
             // Cross
             case 0:
+                Log.v("GET PATTERN", "Cross selected. Case is: " + k % 3);
                 return new int[][]{
                         {0,1,0},
                         {1,1,1},
@@ -885,6 +862,7 @@ public class ImageProcessor {
 
             // X pattern
             case 1:
+                Log.v("GET PATTERN", "X selected. Case is: " + k % 3);
                 return new int[][]{
                         {1,0,1},
                         {0,1,0},
@@ -893,14 +871,24 @@ public class ImageProcessor {
 
             // Square frame
             case 2:
+                Log.v("GET PATTERN", "Square selected. Case is: " + k % 3);
                 return new int[][]{
                         {1,1,1},
                         {1,0,1},
                         {1,1,1}
                 };
 
-            // Diamond patter
+            // traingle frame
+            case 3:
+                Log.v("GET PATTERN", "traingle selected. Case is: " + k % 3);
+                return new int[][]{
+                        {0,0,1},
+                        {0,1,1},
+                        {1,1,1}
+                };
+            // Diamond pattern
             default:
+                Log.v("GET PATTERN", "Diamond selected. Case is: " + k % 3);
                 return new int[][]{
                         {0,1,0},
                         {1,0,1},
@@ -922,8 +910,8 @@ public class ImageProcessor {
 
         int size = 3;
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        for (int y = 0; y < height; y+=size) {
+            for (int x = 0; x < width; x+=size) {
                 int px = x % size;
                 int py = y % size;
 
