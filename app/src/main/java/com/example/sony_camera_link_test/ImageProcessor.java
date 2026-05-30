@@ -17,8 +17,10 @@ import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
+import android.util.Log;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -82,6 +84,16 @@ public class ImageProcessor {
         return rgbValues;
     };
 
+    public static Bitmap scaleBitmap(Bitmap source, int maxSize) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+        float scale = Math.min((float) maxSize / width, (float) maxSize / height);
+        if (scale >= 1f) return source; // already small enough, don't upscale
+        return Bitmap.createScaledBitmap(source,
+                Math.round(width * scale),
+                Math.round(height * scale), true);
+    }
+
     // ------ GreyScale ------------------------------------------------------
     public static Bitmap toGrayScale(Bitmap src) {
         Bitmap bmp = Bitmap.createBitmap(src.getWidth(), src.getHeight(), Bitmap.Config.ARGB_8888);
@@ -109,13 +121,38 @@ public class ImageProcessor {
     // TODO could also do a type of Boustrophedon transform (meandering through pixels)
 
     public static Bitmap createDitheringDistpacter(Bitmap src, int k) {
-        switch (k % 5) {
-            case 0: return dither(src);
-            case 1: return dither(toGrayScale(src));
-            case 2: return deepFriedEffect(src);
-            case 3: return useFloydSteinbergDithering(src, 0);
-            case 4: return useFloydSteinbergDithering(src, 1);
-            default: return dither(src);
+        Log.v("DITHER DISPATCHER", " k % 5 is: " + k % 5);
+
+        // TODO Rename all these below case functions to match the commented discription
+        switch (k - 2) {
+
+            case 0: // colourful FS dither
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing dither");
+                return dither(src);
+
+            case 1: // Newspaper FS dither
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing dither --> grayscale");
+                return dither(toGrayScale(src));
+
+            case 2: // Bright Glitchy
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing deep fried");
+                return deepFriedEffect(src);
+
+            case 3: // DeepFried
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing FS option 0");
+                return useFloydSteinbergDithering(src, 0);
+
+            case 4: // Spooky Dark
+                Log.v("DITHER DISPATCHER", "int k is: " + k);
+                Log.v("DITHER DISPATCHER", "Performing FS option 1");
+                return useFloydSteinbergDithering(src, 1);
+
+            default:
+                return dither(src);
         }
     }
 
@@ -640,13 +677,40 @@ public class ImageProcessor {
         // Core algo:
         //      if (mask == 0) pixel from A
         //          else pixel from B
-        switch (k % 5) {
-            case 0: return interlaceCheckered(a, b, k);
-            case 1: return interlaceVerticalStripes(a, b, k);
-            case 2: return interlaceHalfHalf(a, b);
-            case 3: return interlaceNoise(a, b, k);
-            case 4: return interlaceSwirl(a, b, k);
-            default: return interlaceCheckered(a, b, k);
+        Log.v("INTERLACED DISPATCHER", "int k is: " + k);
+        switch (k - 2) {
+            case 0:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceCheckered");
+                return interlaceCheckered(a, b, k);
+
+            case 1:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceVerticalStripes");
+                return interlaceVerticalStripes(a, b, k);
+
+            case 2:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceHalfHalf");
+                return interlaceHalfHalf(a, b);
+
+            case 3:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceNoise");
+                return interlaceNoise(a, b, k);
+
+            case 4:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceSwirl");
+                return interlaceSwirl(a, b, k);
+
+            case 5:
+                Log.v("INTERLACED DISPATCHER", "Case is: " + (k - 2));
+                Log.v("INTERLACED DISPATCHER", "Performing interlaceGridPattern");
+                return interlaceGridPattern(a, b, k);
+
+            default:
+                return interlaceCheckered(a, b, k);
         }
     }
 
@@ -780,12 +844,16 @@ public class ImageProcessor {
         return out;
     }
 
-    // TODO Test the getPattern and each interlaced pattern!!
+    // [X] Test the getPattern and each interlaced pattern!!
+    // TODO They are all basically the same look... Maybe expand the grid size? Process in chunks?
     private int[][] getPattern(int k) {
-        switch (k % 3) {
+        Log.v("GET PATTERN", "int k is: " + k);
+        //k += 2;
+        switch (k - 4) {
 
             // Cross
             case 0:
+                Log.v("GET PATTERN", "Cross selected. Case is: " + k % 3);
                 return new int[][]{
                         {0,1,0},
                         {1,1,1},
@@ -794,6 +862,7 @@ public class ImageProcessor {
 
             // X pattern
             case 1:
+                Log.v("GET PATTERN", "X selected. Case is: " + k % 3);
                 return new int[][]{
                         {1,0,1},
                         {0,1,0},
@@ -802,14 +871,24 @@ public class ImageProcessor {
 
             // Square frame
             case 2:
+                Log.v("GET PATTERN", "Square selected. Case is: " + k % 3);
                 return new int[][]{
                         {1,1,1},
                         {1,0,1},
                         {1,1,1}
                 };
 
-            // Diamond patter
+            // traingle frame
+            case 3:
+                Log.v("GET PATTERN", "traingle selected. Case is: " + k % 3);
+                return new int[][]{
+                        {0,0,1},
+                        {0,1,1},
+                        {1,1,1}
+                };
+            // Diamond pattern
             default:
+                Log.v("GET PATTERN", "Diamond selected. Case is: " + k % 3);
                 return new int[][]{
                         {0,1,0},
                         {1,0,1},
@@ -831,8 +910,8 @@ public class ImageProcessor {
 
         int size = 3;
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        for (int y = 0; y < height; y+=size) {
+            for (int x = 0; x < width; x+=size) {
                 int px = x % size;
                 int py = y % size;
 

@@ -1,5 +1,8 @@
 package com.example.sony_camera_link_test;
 
+import com.example.sony_camera_link_test.InterlaceFilterOption;
+
+
 import static com.example.sony_camera_link_test.SonyCameraClient.CAMERA_URL;
 
 import android.Manifest;
@@ -51,6 +54,7 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -337,37 +341,40 @@ public class MainActivity extends AppCompatActivity {
                     // TODO Clean up the options and k comments and code here
                     case 0: // K-means — cluster count 2–22
                         currentFilterConfig.setVariant(null);
-                        setSeekBarRange(2, 22);
+                        setSeekBarRange(0, 20);
                         break;
                     case 1: // Pixelation — block size 2–40px
                         currentFilterConfig.setVariant(null);
-                        setSeekBarRange(2, 40);
+                        setSeekBarRange(0, 40);
                         break;
                     case 2: // Grayscale — 1–2 (no real range needed)
                         currentFilterConfig.setVariant(null);
                         setSeekBarRange(1, 2);
                         break;
-                    case 3: // Interlace — 0–5
-                        currentFilterConfig.setVariant(InterlaceFilterOption.interlaceVerticalStripes);
-                        setSeekBarRange(2, 10);
+                    case 3: // Interlace — 0–7
+                        currentFilterConfig.setVariant(InterlaceFilterOption.VERTICAL_STRIPES);
+                        setSeekBarRange(0, 7);
                         break;
                     case 4: // FloydSteinbergDithering — 0–5
-                        currentFilterConfig.setVariant(DitherFilterOption.dither);
-                        setSeekBarRange(2, 10);
+                        currentFilterConfig.setVariant(DitherFilterOption.useFloydSteinbergDitheringOption2);
+                        setSeekBarRange(0, 6);
                         break;
                     case 5: // colour blind — 0–5 options?
+                        currentFilterConfig.setVariant(ColourBlindFilterOption.PROTANOPIA);
                         setSeekBarRange(0,5);
                         break;
                     default:
-                        setSeekBarRange(2, 22);
+                        setSeekBarRange(0, 20);
                         break;
                 }
 
                 // Reset to midpoint and update label
                 int mid = seekMin + (seekBar.getMax() / 2);
                 setSeekBarValue(mid);
-                currentFilterConfig.setIntensity(mid);
-                seekValueLabel.setText(String.valueOf(mid));
+                currentFilterConfig.setIntensity(getSeekBarValue());
+
+                //seekValueLabel.setText(String.valueOf(mid));
+                seekValueLabel.setText(formatSeekBarLabel(currentFilterConfig));
             }
 
 
@@ -383,7 +390,7 @@ public class MainActivity extends AppCompatActivity {
         // Set initial label to match the XML default progress of 10
         //seekValueLabel.setText(String.valueOf(seekBar.getProgress()));
         // used to ensure backwards compatibility
-        currentIntensity = getSeekBarValue();
+        //currentIntensity = getSeekBarValue();
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 
@@ -391,7 +398,12 @@ public class MainActivity extends AppCompatActivity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 // Update the large purple number in real time
                 currentIntensity = getSeekBarValue();
-                seekValueLabel.setText(String.valueOf(progress));
+                // update central config
+                currentFilterConfig.setIntensity(currentIntensity);
+                // Choose the option to update the label
+                //seekValueLabel.setText(String.valueOf(progress));
+                updateVariantFromIntensity();
+                seekValueLabel.setText(formatSeekBarLabel(currentFilterConfig));
             }
 
             @Override
@@ -402,6 +414,94 @@ public class MainActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {
             }
         });
+    }
+
+    private String formatSeekBarLabel(FilterConfig config) {
+        // Just check at the start if it is kmeans, pixelate, or Grayscale
+        if (config.getVariant() == null) {
+            return String.valueOf(config.getIntensity());
+        }
+
+        if (selectedFilter.equals("Interlaced")) {
+            InterlaceFilterOption mode = (InterlaceFilterOption) config.getVariant();
+            switch (mode) {
+                case CHECKERED:
+                    return "Checkered";
+                case VERTICAL_STRIPES:
+                    return "Vertical Stripes";
+                case HALF_HALF:
+                    return "Half / Half";
+                case NOISE:
+                    return "Noise";
+                case SWIRL:
+                    return "Swirl";
+                case GRID_PATTERN:
+                    return "Grid";
+            }
+        }
+
+        if (selectedFilter.equals("FloydSteinbergDithering")) {
+            DitherFilterOption mode = (DitherFilterOption) config.getVariant();
+            switch (mode) {
+                case useFloydSteinbergDitheringOption1:
+                    return "Floyd-Steinberg A";
+                case useFloydSteinbergDitheringOption2:
+                    return "Floyd-Steinberg B";
+                case glitchyDither:
+                    return "Glitchy Dither";
+                case deepFried:
+                    return "Deep Fried";
+                case spookyDither:
+                    return "Spooky Dark Dither";
+            }
+        }
+
+        if (selectedFilter.equals("ColourBlind")) {
+            ColourBlindFilterOption mode = (ColourBlindFilterOption) config.getVariant();
+            switch (mode) {
+                case PROTANOPIA:
+                    return "Protanopia";
+                case DEUTERANOPIA:
+                    return "Deuteranopia";
+                case TRITANOPIA:
+                    return "Tritanopia";
+                case DOG_SIMULATION:
+                    return "Dog Vision";
+            }
+        }
+
+        // Default fallback
+        return String.valueOf(config.getIntensity());
+    }
+
+    private void updateVariantFromIntensity() {
+        Enum<?> variant = currentFilterConfig.getVariant();
+
+        if (variant instanceof InterlaceFilterOption) {
+            InterlaceFilterOption[] values = InterlaceFilterOption.values();
+            int index = Math.min(currentFilterConfig.getIntensity() - 2, values.length - 1);
+            currentFilterConfig.setVariant(values[index]);
+        }
+        else if (variant instanceof DitherFilterOption) {
+            DitherFilterOption[] values = DitherFilterOption.values();
+            Log.v("VALUES", "Values are: " + Arrays.toString(values));
+            Log.v("SEEK BAR", "option BEFORE is " + currentFilterConfig.getVariant());
+            Log.v("SEEK BAR", "intensity BEFORE is " + currentFilterConfig.getIntensity());
+            int index = Math.min(currentFilterConfig.getIntensity() - 2, values.length - 1);
+            currentFilterConfig.setVariant(values[index]);
+            Log.v("SEEK BAR", "option AFTER is " + currentFilterConfig.getVariant());
+            Log.v("SEEK BAR", "intensity AFTER is " + currentFilterConfig.getIntensity());
+        }
+        else if (variant instanceof ColourBlindFilterOption) {
+            ColourBlindFilterOption[] values = ColourBlindFilterOption.values();
+            Log.v("VALUES", "Values are: " + Arrays.toString(values));
+            Log.v("SEEK BAR", "option BEFORE is " + currentFilterConfig.getVariant());
+            Log.v("SEEK BAR", "intensity BEFORE is " + currentFilterConfig.getIntensity());
+            int index = Math.min(currentFilterConfig.getIntensity() - 2, values.length - 1);
+            currentFilterConfig.setVariant(values[index]);
+            Log.v("SEEK BAR", "option AFTER is " + currentFilterConfig.getVariant());
+            Log.v("SEEK BAR", "intensity AFTER is " + currentFilterConfig.getIntensity());
+        }
     }
 
     // ── Buttons ───────────────────────────────────────────────────────────
@@ -754,61 +854,77 @@ public class MainActivity extends AppCompatActivity {
         //setLoading(false);
     }
 
-    private void applyGrayScale(OnFilterDoneCallback onDone) {
-        if (currentImage == null) {
-            Log.e("APPLY GREYSCALE", "No image provided");
-            return;
-        }
+    // TODO Test this
+    private void applyConfigFilterOfChoice(String filter, FilterConfig config) {
+        OnFilterDoneCallback onDone = () -> runOnUiThread(() -> setLoading(false));
 
-        runAsync(()-> {
-                    return ImageProcessor.toGrayScale(currentImage);
-                },
-                result -> {
-                    setCurrentImage(result);
-                    saveBitmapToGallery(result);
-                    onDone.onDone();
-                }
-        );
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.execute(() -> {
+
+            switch (filter) {
+
+                case "K-Means":
+                    Log.v("SEEK BAR", "k in k-means is " + config.getIntensity());
+                    applyKMeansThreaded(config.getIntensity(), onDone);
+                    break;
+                case "Pixelate":
+                    Log.v("SEEK BAR", "pixelation strength is " + config.getIntensity());
+                    applyPixelated(config.getIntensity(), onDone);
+                    break;
+                case "Grayscale":
+                    applyGrayScale(onDone);
+                    break;
+                case "Interlaced":
+                    Log.v("SEEK BAR", "Interlaced option is " + config.getVariant());
+                    Log.v("SEEK BAR", "Interlaced intensity is " + config.getIntensity());
+                    captureInterlaced(config.getIntensity(), onDone);
+                    break;
+                case "FloydSteinbergDithering":
+                    Log.v("SEEK BAR", "Dithering option is " + config.getVariant());
+                    Log.v("SEEK BAR", "Dithering intensity is " + config.getIntensity());
+                    applyFloydSteinbergDithering(config.getIntensity(), onDone);
+                    break;
+                case "ColourBlind":
+                    Log.v("SEEK BAR", "Colour blind option is " + config.getVariant());
+                    Log.v("SEEK BAR", "Colour blind intensity is " + config.getIntensity());
+                    applyColourBlind(config.getIntensity(), onDone);
+                    break;
+            }
+            /*
+            if (filter.equals("K-Means")) {
+                Log.v("SEEK BAR", "k in k-means is " + k);
+                applyKMeansThreaded(k, onDone);
+            }
+            else if (filter.equals("Pixelate")) {
+                Log.v("SEEK BAR", "pixelation strength is " + k);
+                applyPixelated(k, onDone);
+            }
+            else if (filter.equals("Grayscale")) {
+                applyGrayScale(onDone);
+            }
+            else if (filter.equals("Interlaced")) {
+                captureInterlaced(k, onDone);
+            }
+            else if (filter.equals("FloydSteinbergDithering")) {
+                applyFloydSteinbergDithering(k, onDone);
+            }
+            else if (filter.equals("ColourBlind")) {
+                applyColourBlind(k, onDone);
+            }
+             */
+            /*
+            // Each method handles the UI filtered image display
+            // ALWAYS return to UI thread at the end
+            runOnUiThread(() -> setLoading(false));
+             */
+        });
+        // Wrong place: Animators may only be run on Looper threads
+        //setLoading(false);
     }
 
-    private void applyFloydSteinbergDithering(int kDither, OnFilterDoneCallback onDone) {
-        if (currentImage == null) {
-            Log.e("APPLY GREYSCALE", "No image provided");
-            return;
-        }
 
-        runAsync(()-> {
-                    Bitmap scaled = scaleBitmap(currentImage, 800);
-                    //return ImageProcessor.deepFriedEffect(scaled);
-                    //return ImageProcessor.dither(scaled);
-                    return ImageProcessor.createDitheringDistpacter(scaled, kDither);
-                },
-                result -> {
-                    setCurrentImage(result);
-                    saveBitmapToGallery(result);
-                    onDone.onDone();
-                }
-        );
-    }
-
-    private void applyColourBlind(int kBlind, OnFilterDoneCallback onDone) {
-        if (currentImage == null) {
-            Log.e("APPLY GREYSCALE", "No image provided");
-            return;
-        }
-
-        runAsync(()-> {
-                    Bitmap scaled = scaleBitmap(currentImage, 800);
-                    return ImageProcessor.toColourBlind(scaled, kBlind);
-                },
-                result -> {
-                    setCurrentImage(result);
-                    saveBitmapToGallery(result);
-                    onDone.onDone();
-                }
-        );
-    }
-
+    // ------------------- Filters -------------------
+    // ---- Kmeans
     private void applyKMeans() {
 
         if (currentImage == null) {
@@ -849,7 +965,7 @@ public class MainActivity extends AppCompatActivity {
         }
         runAsync(() -> {
                     // worker thread — your existing logic unchanged
-                    Bitmap scaled = scaleBitmap(currentImage, 1000);
+                    Bitmap scaled = ImageProcessor.scaleBitmap(currentImage, 1000);
                     ImageProcessor imgProcessor = new ImageProcessor();
                     // Extract pixels
                     List<float[]> points = imgProcessor.extractRGBValues(scaled);
@@ -860,24 +976,14 @@ public class MainActivity extends AppCompatActivity {
 
                     // Rebuild image
                     return imgProcessor.rebuildFromClusters(scaled.getWidth(), scaled.getHeight(), points, kmeans.getCentroids(), kmeans.getAssignments());
-                    },
-                    result -> {
-                        // Update UI on main thread, then signal completion
-                        setCurrentImage(result);
-                        saveBitmapToGallery(result);
-                        onDone.onDone(); // this activates: setLoading(false) only after image is displayed
-        }
+                },
+                result -> {
+                    // Update UI on main thread, then signal completion
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone(); // this activates: setLoading(false) only after image is displayed
+                }
         );
-    }
-
-    private Bitmap scaleBitmap(Bitmap source, int maxSize) {
-        int width = source.getWidth();
-        int height = source.getHeight();
-        float scale = Math.min((float) maxSize / width, (float) maxSize / height);
-        if (scale >= 1f) return source; // already small enough, don't upscale
-        return Bitmap.createScaledBitmap(source,
-                Math.round(width * scale),
-                Math.round(height * scale), true);
     }
 
     private void applyKMeansThreadedNoLoading(int k_for_kmeans, OnFilterDoneCallback onDone) {
@@ -917,20 +1023,40 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // ---- Greyscale
+    private void applyGrayScale(OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY GREYSCALE", "No image provided");
+            return;
+        }
+
+        runAsync(()-> {
+                    return ImageProcessor.toGrayScale(currentImage);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
+    }
+
+
+    // ---- Pixelated
     private void applyPixelated(int pixelationStrength, OnFilterDoneCallback onDone) {
         if (currentImage == null) {
             Log.e("APPLY PIXELATE", "No image provided");
             return;
         }
         runAsync(() -> {
-                ImageProcessor imgProcessor = new ImageProcessor();
-                return imgProcessor.pixelateImage(currentImage, pixelationStrength);
-            },
-            result -> {
-                setCurrentImage(result);
-                saveBitmapToGallery(result);
-                onDone.onDone();
-            }
+                    ImageProcessor imgProcessor = new ImageProcessor();
+                    return imgProcessor.pixelateImage(currentImage, pixelationStrength);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
         );
     }
 
@@ -951,6 +1077,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    // ---- Interlaced
     private void captureInterlaced(int delay, OnFilterDoneCallback onDone) {
         ImageProcessor imgProcessor = new ImageProcessor();
         // Dictates which row will be interlaced, every even row (2), or every 20th...
@@ -962,7 +1089,11 @@ public class MainActivity extends AppCompatActivity {
                 takePhotoAsBitmap(bitmapB -> {
 
                     //Bitmap resultInterlaced = imgProcessor.createInterlaced(bitmapA, bitmapB, delay);
-                    Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(bitmapA, bitmapB, delay);
+                    Bitmap scaledA = imgProcessor.scaleBitmap(bitmapA, 800);
+                    Bitmap scaledB = imgProcessor.scaleBitmap(bitmapB, 800);;
+
+                    //Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(bitmapA, bitmapB, delay);
+                    Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(scaledA, scaledB, delay);
 
                     runOnUiThread(() -> {
                         currentImage = resultInterlaced;
@@ -972,11 +1103,53 @@ public class MainActivity extends AppCompatActivity {
                     });
 
                 });
-            // Tried delay * 500 --> too short, try static 1500ms
+                // Tried delay * 500 --> too short, try static 1500ms
             }, 2 * 850);
         });
 
 
+    }
+
+
+    // ---- Dithering
+    private void applyFloydSteinbergDithering(int kDither, OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY GREYSCALE", "No image provided");
+            return;
+        }
+
+        runAsync(()-> {
+                    Bitmap scaled = ImageProcessor.scaleBitmap(currentImage, 800);
+                    //return ImageProcessor.deepFriedEffect(scaled);
+                    //return ImageProcessor.dither(scaled);
+                    return ImageProcessor.createDitheringDistpacter(scaled, kDither);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
+    }
+
+
+    // ---- Colourblind
+    private void applyColourBlind(int kBlind, OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY GREYSCALE", "No image provided");
+            return;
+        }
+
+        runAsync(()-> {
+                    Bitmap scaled = ImageProcessor.scaleBitmap(currentImage, 800);
+                    return ImageProcessor.toColourBlind(scaled, kBlind);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
     }
 
 
