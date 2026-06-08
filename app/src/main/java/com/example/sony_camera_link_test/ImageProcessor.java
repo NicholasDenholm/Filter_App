@@ -849,7 +849,7 @@ public class ImageProcessor {
     private int[][] getPattern(int k) {
         Log.v("GET PATTERN", "int k is: " + k);
         //k += 2;
-        switch (k - 4) {
+        switch (k - 6) {
 
             // Cross
             case 0:
@@ -910,14 +910,13 @@ public class ImageProcessor {
 
         int size = 3;
 
-        for (int y = 0; y < height; y+=size) {
-            for (int x = 0; x < width; x+=size) {
+        for (int y = 0; y < height; y+=size - 1) {
+            for (int x = 0; x < width; x++) {
                 int px = x % size;
                 int py = y % size;
 
                 boolean useB = pattern[py][px] == 1;
-                out.setPixel(x, y,
-                        useB ? b.getPixel(x, y) : a.getPixel(x, y));
+                out.setPixel(x, y, useB ? b.getPixel(x, y) : a.getPixel(x, y));
             }
         }
         return out;

@@ -1,17 +1,15 @@
 package com.example.sony_camera_link_test;
 
-import com.example.sony_camera_link_test.InterlaceFilterOption;
-
-
-import static com.example.sony_camera_link_test.SonyCameraClient.CAMERA_URL;
 
 import android.Manifest;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Build;
@@ -25,12 +23,12 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -41,9 +39,6 @@ import androidx.camera.core.ImageProxy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import com.bumptech.glide.Glide;
 import com.google.android.material.button.MaterialButton;
@@ -53,7 +48,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -64,7 +58,19 @@ import java.util.function.Supplier;
 
 public class MainActivity extends AppCompatActivity {
 
+    /*
+        GUIDE: To add more buttons:
+        1. add your button in the ui_[name].xml file
+        2. In bind_views add your button by reference id.
+        3. add this variable to the below UI references
+        4. create if needed a listener in setupButtons()
+        5. Find functions that handle any related functionality
+        6. edit those functions to change state if needed.
+        7. Test your button
+     */
+
     // ── UI references ──────────────────────────────────────────────────────
+    private AppColour appColor;
     private ImageView imageView;
     private Spinner filterSpinner;
     private SeekBar seekBar;
@@ -73,7 +79,8 @@ public class MainActivity extends AppCompatActivity {
     private Button buttonPhoneCamera;
     private Button buttonProcess;
     private ProgressBar progressBar;
-    private MaterialButton switchButton;
+    private MaterialButton switchCameraFacingButton;
+    private MaterialButton downscaleImageButton;
 
     // ── State ──────────────────────────────────────────────────────────────
     // Default on startup
@@ -82,9 +89,12 @@ public class MainActivity extends AppCompatActivity {
     private FilterConfig currentFilterConfig;
 
     private Bitmap currentImage;
-    private String CurrentImageUrl;
+    private String CurrentImageUrl; // For the Sony camera
 
     private boolean isCameraCapturing = false;
+
+    private boolean downscaleEnabled = false;
+    private boolean usingFrontCamera = true;
 
     /*
         GUIDE: To add more filters:
@@ -294,7 +304,8 @@ public class MainActivity extends AppCompatActivity {
         buttonPhoneCamera = findViewById(R.id.button_phone_camera);
         buttonProcess = findViewById(R.id.button_process);
         progressBar = findViewById(R.id.progressBar);
-        switchButton = findViewById(R.id.button_switch_camera);
+        switchCameraFacingButton = findViewById(R.id.button_switch_camera);
+        downscaleImageButton = findViewById(R.id.button_scale_image_down);
     }
 
     // ── Spinner setup ─────────────────────────────────────────────────────
@@ -507,7 +518,7 @@ public class MainActivity extends AppCompatActivity {
     // ── Buttons ───────────────────────────────────────────────────────────
     private void setupButtons() {
 
-        // Camera button: launch camera or photo picker
+        // Camera button: launch camera
         buttonPhoto.setOnClickListener(v -> {
             // TODO: replace with your existing camera / gallery intent logic
             // Example:
@@ -520,23 +531,45 @@ public class MainActivity extends AppCompatActivity {
             });
         });
 
-        // Apply filter button
-        buttonProcess.setOnClickListener(v -> {
-            applyFilter(selectedFilter, currentIntensity);
-        });
-
         buttonPhoneCamera.setOnClickListener(v -> {
             takePhotoAsBitmap(bitmap -> {
                 currentImage = bitmap;
                 imageView.setImageBitmap(bitmap);
             });
         });
-        Log.d("CAMERA", "Binding camera");
-        switchButton.setOnClickListener(v -> switchCamera());
+
+        // Apply filter button
+        buttonProcess.setOnClickListener(v -> {
+            applyFilter(selectedFilter, currentIntensity);
+        });
+
+        Log.d("SETUP BUTTONS", "Binding camera, currentLensFacing is " + currentLensFacing);
+        switchCameraFacingButton.setOnClickListener(v -> switchCamera());
+
+        downscaleImageButton.setOnClickListener(v -> changeDownScaleOption());
+        downscaleImageButton.setBackgroundTintList(
+                ColorStateList.valueOf(appColor.TEXT_DARK_GREY.getColor(this)));
+        /*
+        downscaleImageButton.setOnClickListener(v -> {
+            downscaleEnabled = !downscaleEnabled;
+
+            if (downscaleEnabled) {
+                Log.d("SETUP BUTTONS", "downscale " + downscaleEnabled);
+                downscaleImageButton.setChecked(downscaleEnabled);
+            } else {
+                Log.d("SETUP BUTTONS", "downscale " + downscaleEnabled);
+                downscaleImageButton.setChecked(downscaleEnabled);
+            }
+        });
+         */
+
     }
 
     // ── Cameras ───────────────────────────────────────────────────────────
     private void setupCamera() {
+        switchCameraFacingButton.setBackgroundTintList(
+                ColorStateList.valueOf(appColor.MEDIUM_PURPLE.getColor(this)));
+
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
                 ProcessCameraProvider.getInstance(this);
 
@@ -569,14 +602,42 @@ public class MainActivity extends AppCompatActivity {
 
     private void switchCamera() {
 
+        Log.d("SWITCH CAMERA", "currentLensFacing is " + currentLensFacing);
         if (currentLensFacing == CameraSelector.LENS_FACING_BACK) {
             currentLensFacing = CameraSelector.LENS_FACING_FRONT;
+
+            switchCameraFacingButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.DARK_PURPLE.getColor(this)));
+
+            //switchCameraFacingButton.setBackgroundTintList(ColorStateList.valueOf(Color.BLUE));
+            Toast.makeText(this, "Front Camera", Toast.LENGTH_SHORT).show();
         } else {
             currentLensFacing = CameraSelector.LENS_FACING_BACK;
+
+            switchCameraFacingButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.MEDIUM_PURPLE.getColor(this)));
+            Toast.makeText(this, "Back Camera", Toast.LENGTH_SHORT).show();
         }
 
         bindCameraUseCases();
     }
+
+    private void changeDownScaleOption() {
+        downscaleEnabled = !downscaleEnabled;
+        downscaleImageButton.setChecked(downscaleEnabled);
+
+        if (downscaleEnabled) {
+            downscaleImageButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.WHITE.getColor(this)));
+            Toast.makeText(this, "Downscale Enabled", Toast.LENGTH_SHORT).show();
+        } else {
+            downscaleImageButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.TEXT_DARK_GREY.getColor(this)));
+            Toast.makeText(this, "Downscale Disabled", Toast.LENGTH_SHORT).show();
+        }
+        Log.d("SETUP BUTTONS", "downscale = " + downscaleEnabled);
+    }
+
 
     // ── Filter application ────────────────────────────────────────────────
     private void applyFilter(String filter, int intensity) {
