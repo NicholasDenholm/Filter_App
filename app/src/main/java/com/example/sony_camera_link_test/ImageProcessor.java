@@ -16,6 +16,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.util.Log;
 
@@ -92,6 +93,41 @@ public class ImageProcessor {
         return Bitmap.createScaledBitmap(source,
                 Math.round(width * scale),
                 Math.round(height * scale), true);
+    }
+
+    // Still too loossy, so I will just stay with the option to process filter at full image size
+    public static Bitmap processWithDownscale(Bitmap source, int processingSize, MainActivity.BitmapFilter filter) {
+
+        int originalWidth = source.getWidth();
+        int originalHeight = source.getHeight();
+
+        // small images process faster
+        Bitmap small = scaleBitmap(source, processingSize);
+
+        // Apply the filter to the small image
+        Bitmap filtered = filter.apply(small);
+
+        // With the filtered image, resize it to og size.
+        return Bitmap.createScaledBitmap(filtered, originalWidth, originalHeight, false);
+    }
+
+    public static Bitmap rotateBitmap(Bitmap source, float angle) {
+        if (angle == 0 || source == null) {
+            return source;
+        }
+
+        Matrix matrix = new Matrix();
+        matrix.postRotate(angle);
+
+        // Create a new bitmap transformed by the matrix
+        Bitmap rotatedBitmap = Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
+
+        // Free up the memory of the old, incorrectly oriented bitmap
+        if (rotatedBitmap != source) {
+            source.recycle();
+        }
+
+        return rotatedBitmap;
     }
 
     // ------ GreyScale ------------------------------------------------------

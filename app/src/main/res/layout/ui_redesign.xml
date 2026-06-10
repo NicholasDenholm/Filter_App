@@ -159,7 +159,6 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="14"
                         android:textColor="@color/text_light_grey"
                         android:textSize="10sp"
                         android:layout_centerHorizontal="true"
