@@ -4,5 +4,6 @@ public enum ColourBlindFilterOption {
     PROTANOPIA,
     DEUTERANOPIA,
     TRITANOPIA,
-    DOG_SIMULATION
+    DOG_SIMULATION,
+    GRAYSCALE
 }

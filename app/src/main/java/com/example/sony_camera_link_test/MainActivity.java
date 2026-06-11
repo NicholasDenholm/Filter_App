@@ -16,6 +16,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Matrix;
+import android.graphics.drawable.Drawable;
 import android.hardware.camera2.CameraCharacteristics;
 import android.net.Uri;
 import android.os.Build;
@@ -28,6 +29,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -58,6 +60,8 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.target.CustomTarget;
+import com.bumptech.glide.request.transition.Transition;
 import com.google.android.material.button.MaterialButton;
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -138,26 +142,6 @@ public class MainActivity extends AppCompatActivity {
             "FloydSteinbergDithering",
             "ColourBlind"
     };
-
-    // Track the minimum offset manually instead of using SeekBar.setMin() (API 26+).
-    // The SeekBar internally always runs from 0; add seekMin when reading progress.
-    private int seekMin = 0;
-
-    // Helper: set the seekbar range without using setMin/getMin
-    private void setSeekBarRange(int min, int max) {
-        seekMin = min;
-        seekBar.setMax(max - min);      // internal max is always (real max − real min)
-    }
-
-    // Helper: get the real value (adds the offset back)
-    private int getSeekBarValue() {
-        return seekBar.getProgress() + seekMin;
-    }
-
-    // Helper: set the real value (subtracts the offset)
-    private void setSeekBarValue(int value) {
-        seekBar.setProgress(value - seekMin);
-    }
 
 
     interface OnBitmapReady {
@@ -347,7 +331,7 @@ public class MainActivity extends AppCompatActivity {
         ) {
             // Style the closed spinner text
             @Override
-            public View getView(int position, View convertView, android.view.ViewGroup parent) {
+            public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 ((TextView) view).setTextColor(0xFFDDDDDD); // light gray
                 ((TextView) view).setTextSize(13);
@@ -356,9 +340,9 @@ public class MainActivity extends AppCompatActivity {
 
             // Style the dropdown list items
             @Override
-            public View getDropDownView(int position, View convertView, android.view.ViewGroup parent) {
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
                 View view = super.getDropDownView(position, convertView, parent);
-                ((TextView) view).setTextColor(0xFFDDDDDD);
+                ((TextView) view).setTextColor(appColor.WHITE.getColor(this.getContext()));
                 ((TextView) view).setBackgroundColor(0xFF1E1E2A);
                 ((TextView) view).setPadding(24, 20, 24, 20);
                 return view;
@@ -381,27 +365,35 @@ public class MainActivity extends AppCompatActivity {
                     // TODO Clean up the options and k comments and code here
                     case 0: // K-means — cluster count 2–22
                         currentFilterConfig.setVariant(null);
-                        setSeekBarRange(0, 20);
+                        setSeekBarRange(0, 30);
+                        updateSeekBarTicks("2", "16", "30");
                         break;
                     case 1: // Pixelation — block size 2–40px
                         currentFilterConfig.setVariant(null);
                         setSeekBarRange(0, 40);
+                        updateSeekBarTicks("2", "21", "40");
                         break;
                     case 2: // Grayscale — 1–2 (no real range needed)
-                        currentFilterConfig.setVariant(null);
+                        //currentFilterConfig.setVariant(null);
+                        currentFilterConfig.setVariant(ColourBlindFilterOption.GRAYSCALE);
                         setSeekBarRange(1, 2);
+                        updateSeekBarTicks("", "", "");
+
                         break;
                     case 3: // Interlace — 0–7
                         currentFilterConfig.setVariant(InterlaceFilterOption.VERTICAL_STRIPES);
                         setSeekBarRange(0, 7);
+                        updateSeekBarTicks("0", "", "7");
                         break;
                     case 4: // FloydSteinbergDithering — 0–5
                         currentFilterConfig.setVariant(DitherFilterOption.useFloydSteinbergDitheringOption2);
                         setSeekBarRange(0, 6);
+                        updateSeekBarTicks("0", "", "6");
                         break;
                     case 5: // colour blind — 0–5 options?
                         currentFilterConfig.setVariant(ColourBlindFilterOption.PROTANOPIA);
                         setSeekBarRange(0,5);
+                        updateSeekBarTicks("0", "", "5");
                         break;
                     default:
                         setSeekBarRange(0, 20);
@@ -416,7 +408,6 @@ public class MainActivity extends AppCompatActivity {
                 //seekValueLabel.setText(String.valueOf(mid));
                 seekValueLabel.setText(formatSeekBarLabel(currentFilterConfig));
             }
-
 
             @Override
             public void onNothingSelected(AdapterView<?> parent) {
@@ -510,7 +501,12 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        if (selectedFilter.equals("Grayscale")) {
+            return "Grayscale";
+        }
+
         // Default fallback
+        Log.v("SEEK BAR FORMATING", "formatSeekBarLabel default value set");
         return String.valueOf(config.getIntensity());
     }
 
@@ -547,12 +543,8 @@ public class MainActivity extends AppCompatActivity {
     // ── Buttons ───────────────────────────────────────────────────────────
     private void setupButtons() {
 
-        // Camera button: launch camera
+        // Sony Camera button: launch camera
         buttonPhoto.setOnClickListener(v -> {
-            // TODO: replace with your existing camera / gallery intent logic
-            // Example:
-            // Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-            // startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
             takePhotoAsBitmapSony(bitmap -> {
                 currentImage = bitmap;
                 ImageView imageView = findViewById(R.id.image_view);
@@ -560,6 +552,7 @@ public class MainActivity extends AppCompatActivity {
             });
         });
 
+        // Default phone Camera button (backfacing)
         buttonPhoneCamera.setOnClickListener(v -> {
             takePhotoAsBitmap(bitmap -> {
                 currentImage = bitmap;
@@ -572,18 +565,21 @@ public class MainActivity extends AppCompatActivity {
             applyFilter(selectedFilter, currentIntensity);
         });
 
+        // Camera type menu
         Log.d("SETUP BUTTONS", "Binding camera, currentLensFacing is " + currentLensFacing);
         switchCameraFacingButton.setOnClickListener(v -> {
             //switchCamera();
-            showCameraMenu();
+            //showCameraMenu();
             //openSystemCameraApp();
+            setupCameraMenu();
         });
-        // Set colour for the default option
+        // Set colour for the Camera type button
         switchCameraFacingButton.setBackgroundTintList(
                 ColorStateList.valueOf(appColor.MEDIUM_PURPLE.getColor(this)));
 
         downscaleImageButton.setOnClickListener(v -> changeDownScaleOption() );
-        // Set colour for the default option
+
+        // Set colour for downscale image toggle
         downscaleImageButton.setBackgroundTintList(
                 ColorStateList.valueOf(appColor.WHITE.getColor(this)));
     }
@@ -642,7 +638,99 @@ public class MainActivity extends AppCompatActivity {
         bindCameraUseCases();
     }
 
-    @androidx.annotation.OptIn(markerClass = {ExperimentalCamera2Interop.class, ExperimentalCamera2Interop.class})
+    private void setupCameraMenu() {
+        if (cameraProvider == null) return;
+
+        PopupMenu popupMenu = new PopupMenu(this, switchCameraFacingButton);
+
+        // Fill the menu with items
+        populateCameraMenu(popupMenu.getMenu());
+
+        // Route the click logic to a dedicated handler
+        popupMenu.setOnMenuItemClickListener(this::handleMenuSelection);
+
+        popupMenu.show();
+    }
+
+    @OptIn(markerClass = {ExperimentalCamera2Interop.class, ExperimentalCamera2Interop.class})
+    private void populateCameraMenu(Menu menu) {
+        try {
+            List<CameraInfo> allCameras = cameraProvider.getAvailableCameraInfos();
+
+            for (CameraInfo info : allCameras) {
+                String camId = Camera2CameraInfo.from(info).getCameraId();
+                @SuppressLint("RestrictedApi") CameraCharacteristics chars = Camera2CameraInfo.extractCameraCharacteristics(info);
+
+                Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
+                float[] focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                float focal = (focalLengths != null && focalLengths.length > 0) ? focalLengths[0] : 0.0f;
+
+                Log.d("SAMSUNG_DIAGNOSTIC", "ID: " + camId + " | Facing: " + facing + " | Focal Length: " + focal);
+
+                // Determine user-friendly label using our resolver
+                String label = resolveLensLabel(camId, facing, focal);
+                if (label == null) continue;
+
+                // Create item and bundle metadata payload
+                MenuItem item = menu.add(Menu.NONE, camId.hashCode(), Menu.NONE, label);
+                Intent dataBundle = new Intent();
+                dataBundle.putExtra("LOGICAL_ID", camId);
+                dataBundle.putExtra("FACING", facing);
+                item.setIntent(dataBundle);
+            }
+
+            // Inject the explicit fallback system action at the end
+            menu.add(Menu.NONE, 999, Menu.NONE, "System Camera (Use Telephoto)");
+
+        } catch (Exception e) {
+            Log.e("CAMERA MENU", "Error populating camera list", e);
+        }
+    }
+
+    private String resolveLensLabel(String camId, Integer facing, float focal) {
+        if (facing == null) return null;
+
+        if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
+            return camId.equals("1") ? "Front Camera" : "Front Camera (Wide Angle)";
+        }
+
+        if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+            if (focal <= 2.5f) {
+                return "Ultra-Wide Camera";
+            } else if (focal > 6.0f) {
+                return "Telephoto Camera";
+            } else {
+                return "Main Back Camera (ID " + camId + ")";
+            }
+        }
+
+        return null; // Fallback for unknown or external lenses
+    }
+
+    private boolean handleMenuSelection(MenuItem item) {
+        // Action A: Escape hatch to native app
+        if (item.getItemId() == 999) {
+            openSystemCameraApp();
+            return true;
+        }
+
+        // Action B: Bind a custom internal CameraX lens
+        Intent intent = item.getIntent();
+        if (intent != null) {
+            selectedLogicalCameraId = intent.getStringExtra("LOGICAL_ID");
+            int facing = intent.getIntExtra("FACING", CameraCharacteristics.LENS_FACING_BACK);
+
+            currentLensFacing = (facing == CameraCharacteristics.LENS_FACING_FRONT)
+                    ? CameraSelector.LENS_FACING_FRONT
+                    : CameraSelector.LENS_FACING_BACK;
+
+            Toast.makeText(this, item.getTitle() + " Activated", Toast.LENGTH_SHORT).show();
+            bindCameraUseCases();
+        }
+        return true;
+    }
+
+    @OptIn(markerClass = {ExperimentalCamera2Interop.class, ExperimentalCamera2Interop.class})
     private void showCameraMenu() {
         if (cameraProvider == null) return;
 
@@ -1008,6 +1096,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
      */
+
     private final ActivityResultLauncher<Intent> cameraIntentLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -1046,12 +1135,12 @@ public class MainActivity extends AppCompatActivity {
                 // Save the absolute string path for reading later
                 currentPhotoPath = imageFile.getAbsolutePath();
 
-                // 2. Wrap the file in a secure content URI using the provider we defined in Manifest
+                // Wrap the file in a secure content URI using the provider we defined in Manifest
                 photoURI = FileProvider.getUriForFile(this,
                         getApplicationContext().getPackageName() + ".fileprovider",
                         imageFile);
 
-                // 3. Tell the Samsung/System camera to drop the full image data into this URI location
+                // Tell the Samsung/System camera to drop the full image data into this URI location
                 takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
                 cameraIntentLauncher.launch(takePictureIntent);
 
@@ -1062,6 +1151,8 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    // ---------- Changing UI values -----------------------------------------
     private void changeDownScaleOption() {
         downscaleEnabled = !downscaleEnabled;
         downscaleImageButton.setChecked(downscaleEnabled);
@@ -1079,6 +1170,54 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    // Track the minimum offset manually instead of using SeekBar.setMin() (API 26+).
+    // The SeekBar internally always runs from 0; add seekMin when reading progress.
+    private int seekMin = 0;
+
+    // Helper: set the seekbar range without using setMin/getMin
+    private void setSeekBarRange(int min, int max) {
+        /*
+        // min number of clusters for Kmeans has to be <0 so this is a workaround
+        min += 2;
+        max += 2;
+
+        int mid = min + ((max - min) / 2);
+
+        // Convert ints to Strings
+        String sMin = String.valueOf(min);
+        String sMid = String.valueOf(mid);
+        String sMax = String.valueOf(max);
+
+        updateSeekBarTicks(sMin, sMid, sMax);
+
+         */
+
+        seekMin = min;
+        seekBar.setMax(max - min);      // internal max is always (real max − real min)
+    }
+
+    // Helper: get the real value (adds the offset back)
+    private int getSeekBarValue() {
+        return seekBar.getProgress() + seekMin;
+    }
+
+    // Helper: set the real value (subtracts the offset)
+    private void setSeekBarValue(int value) {
+        seekBar.setProgress(value - seekMin);
+    }
+
+
+    private void updateSeekBarTicks(String start, String mid, String end) {
+        TextView tickStart = findViewById(R.id.seek_bar_tick_start);
+        TextView tickMid = findViewById(R.id.seek_bar_tick_mid);
+        TextView tickEnd = findViewById(R.id.seek_bar_tick_end);
+
+        // Guard against null pointers if the view isn't loaded yet
+        if (tickStart != null) tickStart.setText(start);
+        if (tickMid != null) tickMid.setText(mid);
+        if (tickEnd != null) tickEnd.setText(end);
+    }
+
     // ── Filter application ────────────────────────────────────────────────
     private void applyFilter(String filter, int intensity) {
         // Show spinner, disable button while processing
@@ -1087,21 +1226,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Trying just old method instead of async
         setLoading(true);
-        applyFilterOfChoice(filter, intensity);
+        //applyFilterOfChoice(filter, intensity);
+        applyConfigFilterOfChoice(filter, currentFilterConfig);
 
-        // TODO: run your actual filter processing here (ideally in an AsyncTask
-        // or coroutine so the UI thread isn't blocked).
-        // Example stub using a Handler to simulate async work:
-        /*
-        imageView.postDelayed(() -> {
-            // -- swap in your processed bitmap here --
-            // imageView.setImageBitmap(processedBitmap);
-
-            progressBar.setVisibility(View.GONE);
-            buttonProcess.setEnabled(true);
-        }, 500);
-
-         */
     }
 
     private void takePhotoAsBitmap(OnBitmapReady callback) {
@@ -1152,16 +1279,16 @@ public class MainActivity extends AppCompatActivity {
                 Glide.with(MainActivity.this)
                         .asBitmap()
                         .load(imageUrl)
-                        .into(new com.bumptech.glide.request.target.CustomTarget<Bitmap>() {
+                        .into(new CustomTarget<Bitmap>() {
 
                             @Override
                             public void onResourceReady(Bitmap resource,
-                                                        com.bumptech.glide.request.transition.Transition<? super Bitmap> transition) {
+                                                        Transition<? super Bitmap> transition) {
                                 callback.onReady(resource);
                             }
 
                             @Override
-                            public void onLoadCleared(android.graphics.drawable.Drawable placeholder) {
+                            public void onLoadCleared(Drawable placeholder) {
                                 // TODO optional
                             }
                         });
@@ -1355,7 +1482,7 @@ public class MainActivity extends AppCompatActivity {
         //setLoading(false);
     }
 
-    // TODO Test this
+    // TODO Test this --> Seems to work fine
     private void applyConfigFilterOfChoice(String filter, FilterConfig config) {
         OnFilterDoneCallback onDone = () -> runOnUiThread(() -> setLoading(false));
 
