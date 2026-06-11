@@ -1,6 +1,5 @@
 package com.example.sony_camera_link_test;
 
-
 import static com.example.sony_camera_link_test.ImageProcessor.processWithDownscale;
 import static com.example.sony_camera_link_test.ImageProcessor.rotateBitmap;
 
@@ -48,6 +47,7 @@ import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
+import androidx.camera.core.Camera;
 import androidx.camera.core.CameraInfo;
 import androidx.camera.core.CameraInfoUnavailableException;
 import androidx.camera.core.CameraSelector;
@@ -70,6 +70,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -77,7 +78,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-
 
 public class MainActivity extends AppCompatActivity {
 
@@ -104,6 +104,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private MaterialButton switchCameraFacingButton;
     private MaterialButton downscaleImageButton;
+    private SeekBar zoomSeekBar;
 
     // ── State ──────────────────────────────────────────────────────────────
     // Default on startup
@@ -114,8 +115,7 @@ public class MainActivity extends AppCompatActivity {
     private Bitmap currentImage;
     private String CurrentImageUrl; // For the Sony camera
 
-    // Store the exact camera ID we want to use
-    private String selectedLogicalCameraId = null;
+
     private String currentPhotoPath;
     private Uri photoURI;
 
@@ -160,6 +160,11 @@ public class MainActivity extends AppCompatActivity {
     // Default lens is back
     private int currentLensFacing = CameraSelector.LENS_FACING_BACK;
     private ProcessCameraProvider cameraProvider;
+
+    // Store the exact camera ID we want to use
+    private String selectedLogicalCameraId = null;
+    private Camera camera;
+
 
     // Then handle the result
     @Override
@@ -231,80 +236,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e("SETUP FAILED", "ERROR: " + e);
         }
-
-
-        /*
-        // ------------------- Spinner menu
-        Spinner spinner = findViewById(R.id.filter_spinner);
-        String[] filters = {"K-Means", "Pixelate", "Grayscale", "Interlaced"};
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, filters);
-
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinner.setAdapter(adapter);
-
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-
-                selectedFilter = filters[position];
-
-                Log.d("FILTER", "Selected: " + selectedFilter);
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-         */
-
-        // ------------------- Seek bar
-        //SeekBar seekBar = findViewById(R.id.seekBar2);
-
-        // ------------------- Take photo Button
-        /*
-        Button takePhotoButton = findViewById(R.id.button_photo);
-        takePhotoButton.setOnClickListener(v -> {
-
-            takePhotoAsBitmap(bitmap -> {
-
-                currentImage = bitmap;
-
-                ImageView imageView = findViewById(R.id.image_view);
-                imageView.setImageBitmap(bitmap);
-            });
-        });
-
-         */
-
-        // ------------------- Process Photo Button
-        //Button processPhotoButton = findViewById(R.id.button_process);
-        // dynamic filter application
-        /*
-        processPhotoButton.setOnClickListener(v -> {
-            int seekBarValue = seekBar.getProgress();
-            applyFilterOfChoice(selectedFilter, seekBarValue);
-        });
-
-         */
-
-        /*
-        // only greyscale
-        processPhotoButton.setOnClickListener(v -> applyFilter());
-
-        // Only Kmeans
-        processPhotoButton.setOnClickListener(v -> {
-            int k_for_kmeans = seekBar.getProgress();
-            Log.d("SEEK BAR", "Seek bar value is " + k_for_kmeans);
-            applyKMeansThreaded(k_for_kmeans);
-        });
-        // Only pixalation
-        processPhotoButton.setOnClickListener(v -> {
-            int pixelationStrength = seekBar.getProgress();
-            Log.d("SEEK BAR", "Seek bar value is " + pixelationStrength);
-            applyPixelated(pixelationStrength);
-        });
-        */
     }
 
     // ── Bind all views from the layout ────────────────────────────────────
@@ -319,6 +250,7 @@ public class MainActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBar);
         switchCameraFacingButton = findViewById(R.id.button_switch_camera);
         downscaleImageButton = findViewById(R.id.button_scale_image_down);
+        zoomSeekBar = findViewById(R.id.zoom_seek_bar);
     }
 
     // ── Spinner setup ─────────────────────────────────────────────────────
@@ -582,6 +514,9 @@ public class MainActivity extends AppCompatActivity {
         // Set colour for downscale image toggle
         downscaleImageButton.setBackgroundTintList(
                 ColorStateList.valueOf(appColor.WHITE.getColor(this)));
+
+        // Set up zoom seek bar
+        setupZoomSeekBar();
     }
 
     // ── Cameras ───────────────────────────────────────────────────────────
@@ -602,7 +537,44 @@ public class MainActivity extends AppCompatActivity {
         }, ContextCompat.getMainExecutor(this));
     }
 
+    @OptIn(markerClass = ExperimentalCamera2Interop.class)
     private void bindCameraUseCases() {
+        if (cameraProvider == null) return;
+
+        CameraSelector.Builder selectorBuilder = new CameraSelector.Builder();
+
+        // 2. Filter hardware strictly by the exact String ID chosen from your menu
+        selectorBuilder.addCameraFilter(cameraInfos -> {
+            List<CameraInfo> filteredList = new ArrayList<>();
+            for (CameraInfo info : cameraInfos) {
+                String hardwareId = Camera2CameraInfo.from(info).getCameraId();
+                if (hardwareId.equals(selectedLogicalCameraId)) {
+                    filteredList.add(info);
+                }
+            }
+            return filteredList;
+        });
+
+        CameraSelector cameraSelector = selectorBuilder.build();
+
+        try {
+            cameraProvider.unbindAll();
+
+            // 3. Bind your use cases!
+            // (Note: If you have a PreviewView layout, make sure to add 'preview' here too!)
+            camera = cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture);
+
+            // Snap our zoom slider back to zero since a new hardware lens just activated
+            if (zoomSeekBar != null) {
+                zoomSeekBar.setProgress(0);
+            }
+
+        } catch (Exception e) {
+            Log.e("CAMERA BIND", "Failed to bind camera to ID: " + selectedLogicalCameraId, e);
+        }
+    }
+
+    private void bindCameraUseCasesOld() {
         if (cameraProvider == null) return;
 
         CameraSelector cameraSelector = new CameraSelector.Builder().requireLensFacing(currentLensFacing).build();
@@ -1151,6 +1123,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    private void setupZoomSeekBar() {
+        if (zoomSeekBar == null) return;
+
+        zoomSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                // Only update zoom if the user dragged it and a CameraX lens is active
+                if (fromUser && camera != null) {
+                    float linearZoomPercentage = progress / 100f;
+                    camera.getCameraControl().setLinearZoom(linearZoomPercentage);
+                }
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+    }
 
     // ---------- Changing UI values -----------------------------------------
     private void changeDownScaleOption() {

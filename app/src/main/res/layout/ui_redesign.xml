@@ -214,6 +214,15 @@
 
         </LinearLayout>
 
+        <!-- Zoom seek bar -->
+        <SeekBar
+            android:id="@+id/zoom_seek_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:max="100"
+            android:progress="0" />
+
         <Button
             android:id="@+id/button_process"
             android:layout_width="match_parent"
