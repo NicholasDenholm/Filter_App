@@ -726,6 +726,7 @@ public class MainActivity extends AppCompatActivity {
         bindCameraUseCases();
     }
 
+    //TODO test this
     private void setupCameraSpinner() {
         // Initialize adapter with your dynamic arraylist
         cameraAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, availableCamerasList);
