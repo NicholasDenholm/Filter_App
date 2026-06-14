@@ -6,6 +6,8 @@
     <color name="main_background">#12121A</color>
     <color name="card_background">#1E1E2A</color>
 
+    <!--<color name="side_menu_transparent"><#D9222222></color>-->
+
     <color name="text_dark_grey">#666666</color>
     <color name="text_light_grey">#444444</color>
     <color name="text_blue">#AFA9EC</color>

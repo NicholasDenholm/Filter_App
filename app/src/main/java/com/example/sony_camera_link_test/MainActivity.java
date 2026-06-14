@@ -58,6 +58,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.target.CustomTarget;
@@ -94,17 +96,28 @@ public class MainActivity extends AppCompatActivity {
 
     // ── UI references ──────────────────────────────────────────────────────
     private AppColour appColor;
+
     private ImageView imageView;
+
     private Spinner filterSpinner;
-    private SeekBar seekBar;
+    private SeekBar seekBarFilterStrength;
     private TextView seekValueLabel;
+    private TextView seekFiterStrOptLabel;
+
     private Button buttonPhoto;
     private Button buttonPhoneCamera;
     private Button buttonProcess;
     private ProgressBar progressBar;
-    private MaterialButton switchCameraFacingButton;
-    private MaterialButton downscaleImageButton;
     private SeekBar zoomSeekBar;
+
+    private MaterialButton switchCameraFacingButton;
+    private Spinner switchCameraFacingSpinner;
+    private MaterialButton downscaleImageButton;
+
+    private DrawerLayout drawerLayout;
+    private Button btnOpenLeftMenu;
+    private Button btnOpenRightMenu;
+
 
     // ── State ──────────────────────────────────────────────────────────────
     // Default on startup
@@ -143,7 +156,6 @@ public class MainActivity extends AppCompatActivity {
             "ColourBlind"
     };
 
-
     interface OnBitmapReady {
         void onReady(Bitmap bitmap);
     }
@@ -164,6 +176,9 @@ public class MainActivity extends AppCompatActivity {
     // Store the exact camera ID we want to use
     private String selectedLogicalCameraId = null;
     private Camera camera;
+
+    private List<String> availableCamerasList = new ArrayList<>();
+    private ArrayAdapter<String> cameraAdapter;
 
 
     // Then handle the result
@@ -196,7 +211,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         //setContentView(R.layout.activity_main);
-        setContentView(R.layout.ui_redesign); // This is the new UI design
+        //setContentView(R.layout.ui_redesign); // This is the new UI design
+        setContentView(R.layout.ui_withdrawers);
 
         cameraClient = new SonyCameraClient();
 
@@ -207,22 +223,14 @@ public class MainActivity extends AppCompatActivity {
             }, 1);
         }
 
-        // Came with the default template
-        /*
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
-         */
-
         try {
-            //  Do the setup
+            //  In OnCreate do the setup
             bindViews();
             setupFilterSpinner();
             currentFilterConfig = new FilterConfig(currentIntensity, null);
             setupSeekBar();
             setupButtons();
+            setupSideMenus();
 
             //setupCamera();
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -241,16 +249,26 @@ public class MainActivity extends AppCompatActivity {
     // ── Bind all views from the layout ────────────────────────────────────
     private void bindViews() {
         imageView = findViewById(R.id.image_view);
+
         filterSpinner = findViewById(R.id.filter_spinner);
-        seekBar = findViewById(R.id.seekBar2);
+        seekBarFilterStrength = findViewById(R.id.seekBarFilterStrength);
         seekValueLabel = findViewById(R.id.seek_value_label);
-        buttonPhoto = findViewById(R.id.button_photo);
-        buttonPhoneCamera = findViewById(R.id.button_phone_camera);
-        buttonProcess = findViewById(R.id.button_process);
-        progressBar = findViewById(R.id.progressBar);
+        seekFiterStrOptLabel = findViewById(R.id.label_clusters_block_size);
+
+        buttonPhoto = findViewById(R.id.button_photo); // Sony camera button
+        buttonPhoneCamera = findViewById(R.id.button_phone_camera); // Phone button
+        buttonProcess = findViewById(R.id.button_process); // Apply filter button
+        progressBar = findViewById(R.id.progressBar); // Active when filter is loading
+        zoomSeekBar = findViewById(R.id.zoom_seek_bar); // TODO Improve the format/display of this
+
         switchCameraFacingButton = findViewById(R.id.button_switch_camera);
+        switchCameraFacingSpinner = findViewById(R.id.spinner_switch_camera);
         downscaleImageButton = findViewById(R.id.button_scale_image_down);
-        zoomSeekBar = findViewById(R.id.zoom_seek_bar);
+
+        drawerLayout = findViewById(R.id.drawer_layout);
+        // left and right settings menus
+        btnOpenLeftMenu = findViewById(R.id.btn_open_left_menu);
+        btnOpenRightMenu = findViewById(R.id.btn_open_right_menu);
     }
 
     // ── Spinner setup ─────────────────────────────────────────────────────
@@ -299,33 +317,38 @@ public class MainActivity extends AppCompatActivity {
                         currentFilterConfig.setVariant(null);
                         setSeekBarRange(0, 30);
                         updateSeekBarTicks("2", "16", "30");
+                        updateFilterOptionLabel("CLUSTER COUNT");
                         break;
                     case 1: // Pixelation — block size 2–40px
                         currentFilterConfig.setVariant(null);
                         setSeekBarRange(0, 40);
                         updateSeekBarTicks("2", "21", "40");
+                        updateFilterOptionLabel("PIXELATION STRENGTH");
                         break;
                     case 2: // Grayscale — 1–2 (no real range needed)
                         //currentFilterConfig.setVariant(null);
                         currentFilterConfig.setVariant(ColourBlindFilterOption.GRAYSCALE);
                         setSeekBarRange(1, 2);
                         updateSeekBarTicks("", "", "");
-
+                        updateFilterOptionLabel("");
                         break;
                     case 3: // Interlace — 0–7
                         currentFilterConfig.setVariant(InterlaceFilterOption.VERTICAL_STRIPES);
                         setSeekBarRange(0, 7);
                         updateSeekBarTicks("0", "", "7");
+                        updateFilterOptionLabel("OPTION");
                         break;
                     case 4: // FloydSteinbergDithering — 0–5
                         currentFilterConfig.setVariant(DitherFilterOption.useFloydSteinbergDitheringOption2);
                         setSeekBarRange(0, 6);
                         updateSeekBarTicks("0", "", "6");
+                        updateFilterOptionLabel("OPTION");
                         break;
                     case 5: // colour blind — 0–5 options?
                         currentFilterConfig.setVariant(ColourBlindFilterOption.PROTANOPIA);
                         setSeekBarRange(0,5);
                         updateSeekBarTicks("0", "", "5");
+                        updateFilterOptionLabel("OPTION");
                         break;
                     default:
                         setSeekBarRange(0, 20);
@@ -333,7 +356,7 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 // Reset to midpoint and update label
-                int mid = seekMin + (seekBar.getMax() / 2);
+                int mid = seekMin + (seekBarFilterStrength.getMax() / 2);
                 setSeekBarValue(mid);
                 currentFilterConfig.setIntensity(getSeekBarValue());
 
@@ -349,32 +372,79 @@ public class MainActivity extends AppCompatActivity {
 
 
     // ── SeekBar: update live label on every move ──────────────────────────
+    @SuppressLint("ClickableViewAccessibility")
     private void setupSeekBar() {
-        // Set initial label to match the XML default progress of 10
-        //seekValueLabel.setText(String.valueOf(seekBar.getProgress()));
-        // used to ensure backwards compatibility
-        //currentIntensity = getSeekBarValue();
 
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        if (seekBarFilterStrength == null) {
+            Log.e("SEEK_DEBUG", "CRITICAL ERROR: seekBar variable is NULL! Check your findViewById mapping.");
+            return;
+        }
 
+        //Log.d("SEEK_DEBUG", "Is seekbar enabled? " + seekBarFilterStrength.isEnabled());
+
+        // ── FIX: Prevent the DrawerLayout from hijacking horizontal drags ──
+        seekBarFilterStrength.setOnTouchListener((v, event) -> {
+            int action = event.getAction();
+            switch (action) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    Log.d("SEEK_DEBUG", "Touch ACTION_DOWN detected on seekbar thumb. Requesting parent lock.");
+                    v.getParent().requestDisallowInterceptTouchEvent(true);
+                    break;
+
+                case android.view.MotionEvent.ACTION_MOVE:
+                    Log.d("SEEK_DEBUG", "Touch ACTION_MOVE detected. Current X coordinates: " + event.getX());
+                    v.getParent().requestDisallowInterceptTouchEvent(true);
+                    break;
+
+                case android.view.MotionEvent.ACTION_UP:
+                    Log.d("SEEK_DEBUG", "Touch ACTION_UP detected. Releasing parent lock.");
+                    v.getParent().requestDisallowInterceptTouchEvent(false);
+                    break;
+
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    Log.w("SEEK_DEBUG", "Touch ACTION_CANCEL! A parent layout stole the touch event away.");
+                    v.getParent().requestDisallowInterceptTouchEvent(false);
+                    break;
+            }
+            return false;
+        });
+
+        seekBarFilterStrength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // Update the large purple number in real time
-                currentIntensity = getSeekBarValue();
-                // update central config
-                currentFilterConfig.setIntensity(currentIntensity);
-                // Choose the option to update the label
-                //seekValueLabel.setText(String.valueOf(progress));
-                updateVariantFromIntensity();
-                seekValueLabel.setText(formatSeekBarLabel(currentFilterConfig));
+                Log.d("SEEK_DEBUG", "onProgressChanged triggered! New progress: " + progress + " | fromUser: " + fromUser);
+                try {
+                    currentIntensity = getSeekBarValue();
+                    Log.d("SEEK_DEBUG", "Calculated currentIntensity: " + currentIntensity);
+
+                    if (currentFilterConfig != null) {
+                        currentFilterConfig.setIntensity(currentIntensity);
+                    } else {
+                        Log.w("SEEK_DEBUG", "Warning: currentFilterConfig is NULL");
+                    }
+
+                    updateVariantFromIntensity();
+
+                    if (seekValueLabel != null) {
+                        String updatedLabel = formatSeekBarLabel(currentFilterConfig);
+                        seekValueLabel.setText(updatedLabel);
+                        Log.d("SEEK_DEBUG", "Label updated successfully to: " + updatedLabel);
+                    } else {
+                        Log.e("SEEK_DEBUG", "Error: seekValueLabel is NULL! Cannot update UI text.");
+                    }
+                } catch (Exception e) {
+                    Log.e("SEEK_DEBUG", "CRITICAL ERROR inside onProgressChanged logic: ", e);
+                }
             }
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
+                Log.d("SEEK_DEBUG", "User began physically dragging the seekbar.");
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
+                Log.d("SEEK_DEBUG", "User stopped physically dragging the seekbar.");
             }
         });
     }
@@ -519,6 +589,51 @@ public class MainActivity extends AppCompatActivity {
         setupZoomSeekBar();
     }
 
+    private void setupSideMenus() {
+        Boolean debug = false;
+        if (debug) {
+            Log.d("DRAWER_DEBUG", "Initialization - Drawer null? " + (drawerLayout == null));
+            Log.d("DRAWER_DEBUG", "Initialization - Left Button null? " + (btnOpenLeftMenu == null));
+            Log.d("DRAWER_DEBUG", "Initialization - Right Button null? " + (btnOpenRightMenu == null));
+        }
+
+        if (btnOpenLeftMenu != null && drawerLayout != null) {
+            btnOpenLeftMenu.setOnClickListener(v -> {
+                if (debug) Log.d("DRAWER_DEBUG", "Left menu button physically tapped!");
+                try {
+                    if (drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.START)) {
+                        if (debug) Log.d("DRAWER_DEBUG", "Left drawer was open. Closing it now.");
+                        drawerLayout.closeDrawer(androidx.core.view.GravityCompat.START);
+                    } else {
+                        if (debug) Log.d("DRAWER_DEBUG", "Left drawer was closed. Opening it now.");
+                        drawerLayout.openDrawer(androidx.core.view.GravityCompat.START);
+                    }
+                } catch (Exception e) {
+                    Log.e("DRAWER_DEBUG", "Crash trying to toggle Left Drawer: ", e);
+                }
+            });
+        }
+
+        // Right Button Click Listener
+        if (btnOpenRightMenu != null && drawerLayout != null) {
+            btnOpenRightMenu.setOnClickListener(v -> {
+                if (debug) Log.d("DRAWER_DEBUG", "Right menu button physically tapped!");
+                try {
+                    if (drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.END)) {
+                        if (debug) Log.d("DRAWER_DEBUG", "Right drawer was open. Closing it now.");
+                        drawerLayout.closeDrawer(androidx.core.view.GravityCompat.END);
+                    } else {
+                        if (debug) Log.d("DRAWER_DEBUG", "Right drawer was closed. Opening it now.");
+                        drawerLayout.openDrawer(androidx.core.view.GravityCompat.END);
+                    }
+                } catch (Exception e) {
+                    Log.e("DRAWER_DEBUG", "Crash trying to toggle Right Drawer: ", e);
+                }
+            });
+        }
+
+    }
+
     // ── Cameras ───────────────────────────────────────────────────────────
     private void setupCamera() {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
@@ -543,7 +658,7 @@ public class MainActivity extends AppCompatActivity {
 
         CameraSelector.Builder selectorBuilder = new CameraSelector.Builder();
 
-        // 2. Filter hardware strictly by the exact String ID chosen from your menu
+        // Filter hardware strictly by the exact String ID chosen from your menu
         selectorBuilder.addCameraFilter(cameraInfos -> {
             List<CameraInfo> filteredList = new ArrayList<>();
             for (CameraInfo info : cameraInfos) {
@@ -560,7 +675,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             cameraProvider.unbindAll();
 
-            // 3. Bind your use cases!
+            // Bind your use cases!
             // (Note: If you have a PreviewView layout, make sure to add 'preview' here too!)
             camera = cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture);
 
@@ -588,6 +703,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    // Old method to do a simple switch from back <--> front cameras
     private void switchCamera() {
 
         Log.d("SWITCH CAMERA", "currentLensFacing is " + currentLensFacing);
@@ -609,6 +725,53 @@ public class MainActivity extends AppCompatActivity {
 
         bindCameraUseCases();
     }
+
+    private void setupCameraSpinner() {
+        // Initialize adapter with your dynamic arraylist
+        cameraAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, availableCamerasList);
+        cameraAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        switchCameraFacingSpinner.setAdapter(cameraAdapter);
+
+        // Listen for users changing selection inside the spinner dropdown
+        switchCameraFacingSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String selectedCamera = availableCamerasList.get(position);
+
+                // Pass the string to your existing handler logic!
+                // ex: handleCameraSelection(selectedCamera);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+                // Optional default handler
+            }
+        });
+    }
+    /*
+    private void setupCameraMenuList() {
+        if (cameraProvider == null) return;
+
+        // 1. Clear out any stale entries from a previous run
+        availableCamerasList.clear();
+
+        // 2. Query your actual system info (Mimicking your old populateCameraMenu logic)
+        // Replace this loop logic with whatever your old populate method used to find cameras!
+        for (CameraInfo cameraInfo : cameraProvider.getAvailableCameraInfos()) {
+            String cameraDisplayName = convertCameraInfoToName(cameraInfo); // standardizing string labels
+            availableCamerasList.add(cameraDisplayName);
+        }
+
+        // Fallback safeguard to keep layout from breaking if zero hardware is attached
+        if (availableCamerasList.isEmpty()) {
+            availableCamerasList.add("No Cameras Found");
+        }
+
+        // 3. CRITICAL: Tell the Spinner data adapter to refresh the interface right away
+        cameraAdapter.notifyDataSetChanged();
+    }
+
+     */
 
     private void setupCameraMenu() {
         if (cameraProvider == null) return;
@@ -637,7 +800,7 @@ public class MainActivity extends AppCompatActivity {
                 float[] focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
                 float focal = (focalLengths != null && focalLengths.length > 0) ? focalLengths[0] : 0.0f;
 
-                Log.d("SAMSUNG_DIAGNOSTIC", "ID: " + camId + " | Facing: " + facing + " | Focal Length: " + focal);
+                Log.d("POPULATE_CAMERA_MENU_DEBUG", "ID: " + camId + " | Facing: " + facing + " | Focal Length: " + focal);
 
                 // Determine user-friendly label using our resolver
                 String label = resolveLensLabel(camId, facing, focal);
@@ -652,7 +815,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // Inject the explicit fallback system action at the end
-            menu.add(Menu.NONE, 999, Menu.NONE, "System Camera (Use Telephoto)");
+            menu.add(Menu.NONE, 999, Menu.NONE, "System Camera");
 
         } catch (Exception e) {
             Log.e("CAMERA MENU", "Error populating camera list", e);
@@ -685,6 +848,9 @@ public class MainActivity extends AppCompatActivity {
             openSystemCameraApp();
             return true;
         }
+
+        //DrawerLayout drawerLayout = findViewById(R.id.drawer_layout);
+        //drawerLayout.openDrawer(GravityCompat.START);
 
         // Action B: Bind a custom internal CameraX lens
         Intent intent = item.getIntent();
@@ -1183,19 +1349,18 @@ public class MainActivity extends AppCompatActivity {
          */
 
         seekMin = min;
-        seekBar.setMax(max - min);      // internal max is always (real max − real min)
+        seekBarFilterStrength.setMax(max - min);      // internal max is always (real max − real min)
     }
 
     // Helper: get the real value (adds the offset back)
     private int getSeekBarValue() {
-        return seekBar.getProgress() + seekMin;
+        return seekBarFilterStrength.getProgress() + seekMin;
     }
 
     // Helper: set the real value (subtracts the offset)
     private void setSeekBarValue(int value) {
-        seekBar.setProgress(value - seekMin);
+        seekBarFilterStrength.setProgress(value - seekMin);
     }
-
 
     private void updateSeekBarTicks(String start, String mid, String end) {
         TextView tickStart = findViewById(R.id.seek_bar_tick_start);
@@ -1206,6 +1371,13 @@ public class MainActivity extends AppCompatActivity {
         if (tickStart != null) tickStart.setText(start);
         if (tickMid != null) tickMid.setText(mid);
         if (tickEnd != null) tickEnd.setText(end);
+    }
+
+    private void updateFilterOptionLabel(String newText) {
+        seekFiterStrOptLabel = findViewById(R.id.label_clusters_block_size);
+        if (seekFiterStrOptLabel != null) {
+            seekFiterStrOptLabel.setText(newText);
+        }
     }
 
     // ── Filter application ────────────────────────────────────────────────
@@ -1437,6 +1609,7 @@ public class MainActivity extends AppCompatActivity {
 
      */
 
+    // Depreciated method
     private void applyFilterOfChoice(String filter, int k) {
         OnFilterDoneCallback onDone = () -> runOnUiThread(() -> setLoading(false));
 
