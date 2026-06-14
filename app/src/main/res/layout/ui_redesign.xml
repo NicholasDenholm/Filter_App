@@ -26,6 +26,7 @@
             android:layout_marginBottom="12dp" />
 
         <!-- ── Image preview (capped height so it never overflows) -->
+        <!--
         <ImageView
             android:id="@+id/image_view"
             android:layout_width="match_parent"
@@ -36,6 +37,21 @@
             android:background="@color/card_background"
             android:contentDescription="@string/my_image_description"
             android:layout_marginBottom="16dp" />
+            -->
+
+        <!-- Image preview greedy height -->
+        <ImageView
+            android:id="@+id/image_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:adjustViewBounds="true"
+            android:scaleType="fitCenter"
+            android:src="@drawable/test_image"
+            android:background="@color/card_background"
+            android:contentDescription="@string/my_image_description"
+            android:layout_marginBottom="16dp" />
+
 
         <!-- ── Filter selector card ────────────────────────────── -->
         <androidx.cardview.widget.CardView
@@ -58,7 +74,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="FILTER"
-                    android:textColor="@color/text_light_grey"
+                    android:textColor="@color/white"
                     android:textSize="11sp"
                     android:letterSpacing="0.1"
                     android:layout_marginBottom="8dp" />
@@ -100,10 +116,11 @@
                     android:layout_marginBottom="8dp">
 
                     <TextView
+                        android:id="@+id/label_clusters_block_size"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="CLUSTERS / BLOCK SIZE"
-                        android:textColor="@color/text_light_grey"
+                        android:textColor="@color/white"
                         android:textSize="11sp"
                         android:letterSpacing="0.1"
                         android:layout_centerVertical="true" />
@@ -121,9 +138,9 @@
 
                 </RelativeLayout>
 
-                <!-- SeekBar: min=2, max=22, default=10 -->
+                <!-- SeekBar: For the cluseter count -->
                 <SeekBar
-                    android:id="@+id/seekBar2"
+                    android:id="@+id/seekBarFilterStrength"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:min="2"
@@ -140,6 +157,7 @@
                     android:layout_height="wrap_content">
 
                     <TextView
+                        android:id="@+id/seek_bar_tick_start"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="2"
@@ -148,6 +166,7 @@
                         android:layout_alignParentStart="true" />
 
                     <TextView
+                        android:id="@+id/seek_bar_tick_mid"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="8"
@@ -157,14 +176,7 @@
                         android:layout_marginStart="-30dp" />
 
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/text_light_grey"
-                        android:textSize="10sp"
-                        android:layout_centerHorizontal="true"
-                        android:layout_marginStart="30dp" />
-
-                    <TextView
+                        android:id="@+id/seek_bar_tick_end"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="22"
@@ -176,6 +188,7 @@
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>
+
 
         <!-- ── Button row ──────────────────────────────────────── -->
         <LinearLayout
@@ -218,6 +231,15 @@
                 app:icon="@drawable/ic_compress"/>
 
         </LinearLayout>
+
+        <!-- Zoom seek bar -->
+        <SeekBar
+            android:id="@+id/zoom_seek_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:max="100"
+            android:progress="0" />
 
         <Button
             android:id="@+id/button_process"

@@ -10,6 +10,8 @@ public enum AppColour {
     MAIN_BACKGROUND(R.color.main_background),
     CARD_BACKGROUND(R.color.card_background),
 
+    //SIDE_MENU_TRANSPARENT(R.color.side_menu_transparent),
+
     TEXT_DARK_GREY(R.color.text_dark_grey),
     TEXT_LIGHT_GREY(R.color.text_light_grey),
     TEXT_BLUE(R.color.text_blue),
