@@ -131,6 +131,7 @@
                     android:layout_marginStart="8dp"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
 
+                <!--
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/button_switch_camera"
                     android:layout_width="48dp"
@@ -139,6 +140,7 @@
                     android:layout_marginStart="8dp"
                     app:icon="@drawable/ic_flip_camera"
                     style="@style/Widget.MaterialComponents.Button.Icon"/>
+                    -->
 
             </LinearLayout>
 

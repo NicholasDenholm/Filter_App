@@ -92,7 +92,7 @@ public class MainActivity extends AppCompatActivity {
      */
 
     // ── UI references ──────────────────────────────────────────────────────
-    private AppColour appColor;
+    private AppColour appColor; // is actually used
 
     private ImageView imageView;
 
@@ -164,35 +164,44 @@ public class MainActivity extends AppCompatActivity {
 
     // ── Camera Clients ─────────────────────────────────────────────────────
 
+    // TODO any commented out var is unneeded or moved to AndroidCameraClient
     private SonyCameraClient sonyCameraClient;
-    //private ImageCapture imageCapture;
+    private AndroidCameraClient cameraClient;
+
+    private ImageCapture imageCapture;
+    // TODO make the preview veiw
+    private PreviewView previewView;
+
+    // Special list holding the available cameras
+    private ArrayAdapter<CameraOption> cameraAdapter;
+
+    // Holds the currently active camera configuration
+    //private CameraOption activeCameraOption;
+
 
     // Default lens is back
     private int currentLensFacing = CameraSelector.LENS_FACING_BACK;
     //private ProcessCameraProvider cameraProvider; // initialized and used in setupCamera
 
     // Store the exact camera ID we want to use
-    private String selectedLogicalCameraId = "0";
+    // private String selectedLogicalCameraId = "0";
     private Camera camera; // initialized in bindCameraUseCases
 
     //private List<CameraOption> availableCamerasList = new ArrayList<>();
     //private ArrayAdapter<CameraOption> cameraAdapter;
 
-    // TODO may just need these below
+
     // ── Camera Core & UI State
-    private ProcessCameraProvider cameraProvider;
-    private ImageCapture imageCapture;
+    // private ProcessCameraProvider cameraProvider;
+    // private ImageCapture imageCapture;
 
-    private List<CameraOption> availableCamerasList = new ArrayList<>();
-    private ArrayAdapter<CameraOption> cameraAdapter;
-
-    // Holds the currently active camera configuration
-    private CameraOption activeCameraOption;
+    //private List<CameraOption> availableCamerasList = new ArrayList<>();
 
 
-    // TODO make the preview veiw
-    private PreviewView previewView;
-    private AndroidCameraClient cameraClient;
+
+
+
+
 
 
 
@@ -387,7 +396,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ── SeekBar: update live label on every move ──────────────────────────
+    // ── Filter Strenght SeekBar ───────────────────────────────────────────
     @SuppressLint("ClickableViewAccessibility")
     private void setupSeekBar() {
 
@@ -598,6 +607,8 @@ public class MainActivity extends AppCompatActivity {
             applyFilter(selectedFilter, currentIntensity);
         });
 
+        /*
+        // Old method to switch the selected camera
         // Camera type menu
         switchCameraFacingButton.setOnClickListener(v -> {
             Log.d("SETUP BUTTONS", "Binding camera, currentLensFacing is " + currentLensFacing);
@@ -605,6 +616,7 @@ public class MainActivity extends AppCompatActivity {
         // Set colour for the Camera type button
         switchCameraFacingButton.setBackgroundTintList(
                 ColorStateList.valueOf(appColor.MEDIUM_PURPLE.getColor(this)));
+         */
 
         downscaleImageButton.setOnClickListener(v -> changeDownScaleOption() );
         // Set colour for downscale image toggle
@@ -663,11 +675,12 @@ public class MainActivity extends AppCompatActivity {
     // ── Cameras ───────────────────────────────────────────────────────────
 
     private void startCameraPipeline() {
+        Boolean debug = false;
 
-        Log.d("MAIN_CAMERA_DEBUG", "startCameraPipeline() called. Initiating asynchronous camera setup...");
+        if (debug) Log.d("MAIN_CAMERA_DEBUG", "startCameraPipeline() called. Initiating asynchronous camera setup...");
         // Initialize logic asynchronously
         cameraClient.setupCamera(cameras -> {
-            Log.d("MAIN_CAMERA_DEBUG", "setupCamera callback triggered. Total hardware cameras loaded: " + (cameras != null ? cameras.size() : 0));
+            if (debug) Log.d("MAIN_CAMERA_DEBUG", "setupCamera callback triggered. Total hardware cameras loaded: " + (cameras != null ? cameras.size() : 0));
 
             if (cameras == null || cameras.isEmpty()) {
                 Log.w("MAIN_CAMERA_DEBUG", "Warning: Available cameras list is empty or null!");
@@ -682,11 +695,13 @@ public class MainActivity extends AppCompatActivity {
 
             // Set default selection natively on the UI
             int defaultIndex = cameraClient.setDefaultCamera(0);
-            Log.d("MAIN_CAMERA_DEBUG", "Setting default spinner selection to index: " + defaultIndex);
+            if (debug) Log.d("MAIN_CAMERA_DEBUG", "Setting default spinner selection to index: " + defaultIndex);
             switchCameraFacingSpinner.setSelection(cameraClient.setDefaultCamera(defaultIndex));
         });
     }
 
+    // Not needed any more just kept here for reference?
+    /*
     public void setupCameraSpinner() {
         cameraAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, availableCamerasList);
         cameraAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -718,6 +733,7 @@ public class MainActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
+     */
 
     private void setupSpinnerListener(List<CameraOption> cameras) {
         switchCameraFacingSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -743,6 +759,7 @@ public class MainActivity extends AppCompatActivity {
         zoomSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                camera = cameraClient.getCamera();
                 // Only update zoom if the user dragged it and a CameraX lens is active
                 if (fromUser && camera != null) {
                     float linearZoomPercentage = progress / 100f;
@@ -937,9 +954,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ── Async work ──────────────────────────────────────────────
-    // background: the heavy work — runs on worker thread, returns a Bitmap
-    // onDone:     UI update — runs on main thread after background finishes
     private void runAsync(Supplier<Bitmap> background, Consumer<Bitmap> onDone) {
+        // background: the heavy work — runs on worker thread, returns a Bitmap
+        // onDone:     UI update — runs on main thread after background finishes
         Executors.newSingleThreadExecutor().execute(() -> {
             Bitmap result = background.get();
             runOnUiThread(() -> onDone.accept(result));
@@ -1037,7 +1054,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ------------------- Application of Filters -------------------
-    /*
+    /**
     private void generalFilterMethod() {
         if (currentImage == null) {
             Log.e("APPLY FILTER", "No image provided");
@@ -1052,9 +1069,7 @@ public class MainActivity extends AppCompatActivity {
                     saveBitmapToGallery(result);
                 }
         );
-    }
-
-     */
+    }**/
 
     // Depreciated method
     private void applyFilterOfChoice(String filter, int k) {
@@ -1296,7 +1311,6 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-
     // ---- Pixelated
     private void applyPixelated(int pixelationStrength, OnFilterDoneCallback onDone) {
         if (currentImage == null) {
@@ -1372,7 +1386,6 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-
     // ---- Dithering
     private void applyFloydSteinbergDithering(int kDitherOption, OnFilterDoneCallback onDone) {
         if (currentImage == null) {
@@ -1395,7 +1408,6 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-
     // ---- Colourblind
     private void applyColourBlind(int kBlind, OnFilterDoneCallback onDone) {
         if (currentImage == null) {
@@ -1417,37 +1429,6 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
     }
-
-
-    /*
-    private void applyKMeans() {
-        if (currentImage == null) {
-            Log.e("APPLY KMEANS", "No image provided");
-            return;
-        }
-        ImageProcessor imgProcessor = new ImageProcessor();
-
-        Bitmap bmp = imgProcessor.imageToBitmap(currentImage);
-        ArrayList<float[]> points = imgProcessor.extractRGBValues(bmp);
-        imgProcessor.setPoints(points);
-
-
-        KMeans kmeans = new KMeans(points, k);
-        kmeans.run();
-
-
-        setCurrentImage(kmeansBMP);
-    }
-    */
-
-
-
-
-
-
-
-
-
 
 
 }

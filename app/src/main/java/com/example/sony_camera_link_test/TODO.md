@@ -50,7 +50,9 @@ UI REFORMATING
 [x] Standardize the colour scheme
 [x] Apply colour scheme to XML/Text
 [x] Make side menus
-[~] Populate and test side menus
+[X] Populate and test side menus
+[] Fix the fall back system camera option
+[] move sony cam to camera menu
 [] Find solution for zoom bar
 [] Reformat the main image, camera, filter view
 

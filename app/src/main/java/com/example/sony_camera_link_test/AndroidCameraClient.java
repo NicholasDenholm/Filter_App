@@ -378,6 +378,10 @@ public class AndroidCameraClient {
                 .build();
     }
 
+    public static Camera getCamera() {
+        return camera;
+    }
+
     // ── Taking Photos ───────────────────────────────────────────────────────────
 
     public void takePhotoAsBitmap(OnBitmapReady callback) {
