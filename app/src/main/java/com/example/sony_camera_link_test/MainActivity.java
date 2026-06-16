@@ -1,6 +1,6 @@
 package com.example.sony_camera_link_test;
 
-import static com.example.sony_camera_link_test.ImageProcessor.processWithDownscale;
+import static com.example.sony_camera_link_test.AndroidCameraClient.bindCameraUseCasesBySelection;
 import static com.example.sony_camera_link_test.ImageProcessor.rotateBitmap;
 
 import android.Manifest;
@@ -13,7 +13,6 @@ import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.drawable.Drawable;
 import android.hardware.camera2.CameraCharacteristics;
@@ -49,16 +48,15 @@ import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraInfo;
-import androidx.camera.core.CameraInfoUnavailableException;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
-import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.bumptech.glide.Glide;
@@ -75,7 +73,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -166,19 +163,37 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ── Camera Clients ─────────────────────────────────────────────────────
-    private SonyCameraClient cameraClient;
-    private ImageCapture imageCapture;
+
+    private SonyCameraClient sonyCameraClient;
+    //private ImageCapture imageCapture;
 
     // Default lens is back
     private int currentLensFacing = CameraSelector.LENS_FACING_BACK;
-    private ProcessCameraProvider cameraProvider;
+    //private ProcessCameraProvider cameraProvider; // initialized and used in setupCamera
 
     // Store the exact camera ID we want to use
-    private String selectedLogicalCameraId = null;
-    private Camera camera;
+    private String selectedLogicalCameraId = "0";
+    private Camera camera; // initialized in bindCameraUseCases
 
-    private List<String> availableCamerasList = new ArrayList<>();
-    private ArrayAdapter<String> cameraAdapter;
+    //private List<CameraOption> availableCamerasList = new ArrayList<>();
+    //private ArrayAdapter<CameraOption> cameraAdapter;
+
+    // TODO may just need these below
+    // ── Camera Core & UI State
+    private ProcessCameraProvider cameraProvider;
+    private ImageCapture imageCapture;
+
+    private List<CameraOption> availableCamerasList = new ArrayList<>();
+    private ArrayAdapter<CameraOption> cameraAdapter;
+
+    // Holds the currently active camera configuration
+    private CameraOption activeCameraOption;
+
+
+    // TODO make the preview veiw
+    private PreviewView previewView;
+    private AndroidCameraClient cameraClient;
+
 
 
     // Then handle the result
@@ -187,7 +202,8 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == 100 && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            setupCamera();
+            //setupCamera();
+            startCameraPipeline();
         } else {
             Log.e("CAMERA", "Camera permission denied");
         }
@@ -214,7 +230,9 @@ public class MainActivity extends AppCompatActivity {
         //setContentView(R.layout.ui_redesign); // This is the new UI design
         setContentView(R.layout.ui_withdrawers);
 
-        cameraClient = new SonyCameraClient();
+        sonyCameraClient = new SonyCameraClient();
+
+        cameraClient = new AndroidCameraClient(this, this, imageView);
 
         // Checks the version so that the proper save function is called
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -224,7 +242,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
-            //  In OnCreate do the setup
             bindViews();
             setupFilterSpinner();
             currentFilterConfig = new FilterConfig(currentIntensity, null);
@@ -232,10 +249,10 @@ public class MainActivity extends AppCompatActivity {
             setupButtons();
             setupSideMenus();
 
-            //setupCamera();
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                     == PackageManager.PERMISSION_GRANTED) {
-                setupCamera();
+                //setupCamera();
+                startCameraPipeline();
             } else {
                 ActivityCompat.requestPermissions(this,
                         new String[]{Manifest.permission.CAMERA}, 100);
@@ -369,7 +386,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-
 
     // ── SeekBar: update live label on every move ──────────────────────────
     @SuppressLint("ClickableViewAccessibility")
@@ -556,10 +572,23 @@ public class MainActivity extends AppCompatActivity {
 
         // Default phone Camera button (backfacing)
         buttonPhoneCamera.setOnClickListener(v -> {
-            takePhotoAsBitmap(bitmap -> {
+            Log.d("MAIN_CAMERA_DEBUG", "Capture button clicked. Passing command to cameraClient...");
+
+            cameraClient.takePhotoAsBitmap(rotatedBitmap -> {
+                Log.d("MAIN_DEBUG", "Bitmap received in MainActivity! Displaying in ImageView.");
+
+                this.currentImage = rotatedBitmap;
+                // This is safe to run directly because the client already shifted us to the Main Looper thread
+                imageView.setImageBitmap(rotatedBitmap);
+            });
+            /* Crashes
+            cameraClient.takePhotoAsBitmap(bitmap -> {
                 currentImage = bitmap;
                 imageView.setImageBitmap(bitmap);
+                cameraClient.logCameraState("Take picture button line 570");
             });
+
+             */
         });
 
         // Apply filter button
@@ -568,19 +597,20 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Camera type menu
-        Log.d("SETUP BUTTONS", "Binding camera, currentLensFacing is " + currentLensFacing);
+
         switchCameraFacingButton.setOnClickListener(v -> {
+            Log.d("SETUP BUTTONS", "Binding camera, currentLensFacing is " + currentLensFacing);
             //switchCamera();
             //showCameraMenu();
             //openSystemCameraApp();
-            setupCameraMenu();
+            //setupCameraMenu();
+            //setupCameraMenuList();
         });
         // Set colour for the Camera type button
         switchCameraFacingButton.setBackgroundTintList(
                 ColorStateList.valueOf(appColor.MEDIUM_PURPLE.getColor(this)));
 
         downscaleImageButton.setOnClickListener(v -> changeDownScaleOption() );
-
         // Set colour for downscale image toggle
         downscaleImageButton.setBackgroundTintList(
                 ColorStateList.valueOf(appColor.WHITE.getColor(this)));
@@ -635,7 +665,86 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ── Cameras ───────────────────────────────────────────────────────────
-    private void setupCamera() {
+
+    private void startCameraPipeline() {
+
+        Log.d("MAIN_CAMERA_DEBUG", "startCameraPipeline() called. Initiating asynchronous camera setup...");
+        // Initialize logic asynchronously
+        cameraClient.setupCamera(cameras -> {
+            Log.d("MAIN_CAMERA_DEBUG", "setupCamera callback triggered. Total hardware cameras loaded: " + (cameras != null ? cameras.size() : 0));
+
+            if (cameras == null || cameras.isEmpty()) {
+                Log.w("MAIN_CAMERA_DEBUG", "Warning: Available cameras list is empty or null!");
+            }
+
+            // This runs as a callback once the hardware list is generated
+            cameraAdapter = new ArrayAdapter<CameraOption>(MainActivity.this, android.R.layout.simple_spinner_item, cameras); // This line has a red line error: "Cannot resolve constructor 'ArrayAdapter(MainActivity, int, <lambda parameter>)'"
+            cameraAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            switchCameraFacingSpinner.setAdapter(cameraAdapter);
+
+            setupSpinnerListener(cameras);
+
+            // Set default selection natively on the UI
+            int defaultIndex = cameraClient.setDefaultCamera(0);
+            Log.d("MAIN_CAMERA_DEBUG", "Setting default spinner selection to index: " + defaultIndex);
+            switchCameraFacingSpinner.setSelection(cameraClient.setDefaultCamera(defaultIndex));
+        });
+    }
+
+    public void setupCameraSpinner() {
+        cameraAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, availableCamerasList);
+        cameraAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        switchCameraFacingSpinner.setAdapter(cameraAdapter);
+
+        switchCameraFacingSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                activeCameraOption = availableCamerasList.get(position);
+
+                if (activeCameraOption.isSystemFallback) {
+                    openSystemCameraApp();
+                    return;
+                }
+
+                Toast.makeText(MainActivity.this, activeCameraOption.label + " Activated", Toast.LENGTH_SHORT).show();
+                Log.d("SETUP_CAMERA_DEBUG", "The position is: " + position);
+                Log.d("SETUP_CAMERA_DEBUG", "The camera is: " + activeCameraOption.label + " | "  + activeCameraOption.logicalId + " | " + activeCameraOption.facing + " | ");
+                // Fire your internal CameraX pipeline execution
+                //bindCameraUseCases();
+                //bindCameraUseCasesOG();
+                cameraClient.logCameraState("BINDING BEFORE");
+                cameraClient.bindCameraUseCasesBySelection(activeCameraOption);
+                cameraClient.logCameraState("BINDING AFTER");
+
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    private void setupSpinnerListener(List<CameraOption> cameras) {
+        switchCameraFacingSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                CameraOption selected = cameras.get(position);
+                if (selected.isSystemFallback) {
+                    openSystemCameraApp(); // Keep activity fallback routing here
+                } else {
+                    cameraClient.bindCameraUseCasesBySelection(selected);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+
+    /*
+    Remove or archive this
+     */
+    private void setupCameraOG() {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
                 ProcessCameraProvider.getInstance(this);
 
@@ -643,17 +752,102 @@ public class MainActivity extends AppCompatActivity {
             try {
                 cameraProvider = cameraProviderFuture.get();
                 imageCapture = new ImageCapture.Builder().build();
-                Log.d("CAMERA", "Binding camera");
+                Log.d("SETUP_CAMERA", "Binding camera");
                 bindCameraUseCases();
 
             } catch (Exception e) {
-                Log.e("CAMERA SETUP", "Failed to setup camera", e);
+                Log.e("SETUP_CAMERA", "Failed to setup camera", e);
             }
         }, ContextCompat.getMainExecutor(this));
     }
 
+
+
+    /*
+    Remove or archive this
+     */
     @OptIn(markerClass = ExperimentalCamera2Interop.class)
+    private void populateCameraListBROKEN() {
+        availableCamerasList.clear();
+        if (cameraProvider == null) return;
+
+        try {
+            List<CameraInfo> allCameras = cameraProvider.getAvailableCameraInfos();
+            Log.d("SETUP_CAMERA_DEBUG", "All cameras: " + allCameras.toString());
+
+            // Query the device for its physical/logical camera configurations
+            for (CameraInfo info : allCameras) {
+                //int lensFacing = info.getLensFacing(); // LENS_FACING_BACK or LENS_FACING_FRONT
+                //String label = (lensFacing == CameraSelector.LENS_FACING_BACK) ? "Main Back Camera" : "Front Camera";
+
+                String camId = Camera2CameraInfo.from(info).getCameraId();
+                @SuppressLint("RestrictedApi")
+                CameraCharacteristics chars = Camera2CameraInfo.extractCameraCharacteristics(info);
+
+                Integer lensFacing = chars.get(CameraCharacteristics.LENS_FACING);
+                float[] focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                float focal = (focalLengths != null && focalLengths.length > 0) ? focalLengths[0] : 0.0f;
+
+                Log.d("SETUP_CAMERA_DEBUG", "populateCameraList: " + "ID: " + camId + " | Facing: " + lensFacing + " | Focal Length: " + focal);
+
+                // Determine user-friendly label using your existing resolver
+                String label = resolveLensLabel(camId, lensFacing, focal);
+                if (label == null) continue;
+
+                //ERROR here is the problem I am mapping 0 to each option in the spinner...
+                // Map the hardware info to your custom CameraOption object
+                availableCamerasList.add(new CameraOption(label, "0", lensFacing));
+            }
+        } catch (Exception e) {
+            Log.e("CAMERA_POPULATE", "Error querying camera hardware", e);
+        }
+
+        // Append your native application escape hatch option
+        availableCamerasList.add(new CameraOption("Open System Camera", "-1", -1));
+    }
+
+    /*
+    Remove or archive this
+     */
     private void bindCameraUseCases() {
+        // Safety check: ensure everything is initialized before swapping
+        if (cameraProvider == null || activeCameraOption == null) {
+            Log.w("CAMERA_SWAP", "Cannot swap camera: Provider or active option is missing.");
+            return;
+        }
+
+        try {
+            // 1. Step back: Unbind all active use cases (Preview, ImageCapture, etc.)
+            cameraProvider.unbindAll();
+
+            // 2. Target the new hardware target based on our active state
+            int lensTarget = (activeCameraOption.facing == CameraSelector.LENS_FACING_FRONT)
+                    ? CameraSelector.LENS_FACING_FRONT
+                    : CameraSelector.LENS_FACING_BACK;
+
+            CameraSelector cameraSelector = new CameraSelector.Builder()
+                    .requireLensFacing(lensTarget)
+                    .build();
+
+            // 3. Initialize your viewfinder preview engine
+            //Preview preview = new Preview.Builder().build();
+
+            // No preview now
+            //preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+            // 4. Commit the new configuration to the device architecture
+            camera = cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture);
+
+        } catch (Exception e) {
+            Log.e("CAMERA_SWAP", "Failed to switch camera states: ", e);
+        }
+    }
+
+    /*
+    Remove or archive this
+     */
+    @OptIn(markerClass = ExperimentalCamera2Interop.class)
+    private void bindCameraUseCasesOG() {
         if (cameraProvider == null) return;
 
         CameraSelector.Builder selectorBuilder = new CameraSelector.Builder();
@@ -689,6 +883,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /*
+    Remove or archive this
+     */
     private void bindCameraUseCasesOld() {
         if (cameraProvider == null) return;
 
@@ -703,6 +900,11 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+
+
+    /*
+    Remove or archive this
+     */
     // Old method to do a simple switch from back <--> front cameras
     private void switchCamera() {
 
@@ -726,54 +928,97 @@ public class MainActivity extends AppCompatActivity {
         bindCameraUseCases();
     }
 
+    /*
+    Remove or archive this
+     */
     //TODO test this
-    private void setupCameraSpinner() {
-        // Initialize adapter with your dynamic arraylist
+    // Only works when pressed, this doesnt work at app startup...
+    private void setupCameraSpinner2() {
+        // 1. Standardize the adapter to handle our object type
         cameraAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, availableCamerasList);
         cameraAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         switchCameraFacingSpinner.setAdapter(cameraAdapter);
 
-        // Listen for users changing selection inside the spinner dropdown
+        Log.d("SETUP_CAMERA", "Camera adapter is: " + cameraAdapter);
+
+        // 2. Map spinner selections to your existing camera application logic
         switchCameraFacingSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                String selectedCamera = availableCamerasList.get(position);
+                CameraOption selectedOption = availableCamerasList.get(position);
 
-                // Pass the string to your existing handler logic!
-                // ex: handleCameraSelection(selectedCamera);
+                // Action A: Escape hatch to native application
+                if (selectedOption.isSystemFallback) {
+                    openSystemCameraApp();
+                    return;
+                }
+
+                // Action B: Process internal CameraX hardware assignments
+                selectedLogicalCameraId = selectedOption.logicalId;
+
+                currentLensFacing = (selectedOption.facing == CameraCharacteristics.LENS_FACING_FRONT)
+                        ? CameraSelector.LENS_FACING_FRONT
+                        : CameraSelector.LENS_FACING_BACK;
+
+                Toast.makeText(MainActivity.this, selectedOption.label + " Activated", Toast.LENGTH_SHORT).show();
+
+                // Fire your existing pipeline engine
+                bindCameraUseCases();
             }
 
             @Override
             public void onNothingSelected(AdapterView<?> parent) {
-                // Optional default handler
+                // Safe to leave empty
             }
         });
     }
-    /*
+
+
+    @OptIn(markerClass = {ExperimentalCamera2Interop.class})
     private void setupCameraMenuList() {
         if (cameraProvider == null) return;
 
-        // 1. Clear out any stale entries from a previous run
-        availableCamerasList.clear();
+        try {
+            // 1. Reset our data collection pool
+            availableCamerasList.clear();
 
-        // 2. Query your actual system info (Mimicking your old populateCameraMenu logic)
-        // Replace this loop logic with whatever your old populate method used to find cameras!
-        for (CameraInfo cameraInfo : cameraProvider.getAvailableCameraInfos()) {
-            String cameraDisplayName = convertCameraInfoToName(cameraInfo); // standardizing string labels
-            availableCamerasList.add(cameraDisplayName);
+            List<CameraInfo> allCameras = cameraProvider.getAvailableCameraInfos();
+
+            for (CameraInfo info : allCameras) {
+                String camId = Camera2CameraInfo.from(info).getCameraId();
+                @SuppressLint("RestrictedApi")
+                CameraCharacteristics chars = Camera2CameraInfo.extractCameraCharacteristics(info);
+
+                Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
+                float[] focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                float focal = (focalLengths != null && focalLengths.length > 0) ? focalLengths[0] : 0.0f;
+
+                Log.d("SPINNER_CAMERA_DEBUG", "ID: " + camId + " | Facing: " + facing + " | Focal Length: " + focal);
+
+                // Determine user-friendly label using your existing resolver
+                String label = resolveLensLabel(camId, facing, focal);
+                if (label == null) continue;
+
+                // Package the text AND hardware specs together, then add to the arraylist
+                availableCamerasList.add(new CameraOption(label, camId, facing));
+            }
+
+            // 2. Inject the explicit system fallback option at the bottom
+            availableCamerasList.add(new CameraOption("System Camera"));
+
+            // 3. Update the UI Adapter on the main execution thread
+            if (cameraAdapter != null) {
+                cameraAdapter.notifyDataSetChanged();
+            }
+
+        } catch (Exception e) {
+            Log.e("SPINNER_CAMERA", "Error populating camera list source", e);
         }
-
-        // Fallback safeguard to keep layout from breaking if zero hardware is attached
-        if (availableCamerasList.isEmpty()) {
-            availableCamerasList.add("No Cameras Found");
-        }
-
-        // 3. CRITICAL: Tell the Spinner data adapter to refresh the interface right away
-        cameraAdapter.notifyDataSetChanged();
     }
 
+    /*
+    Remove or archive this
      */
-
     private void setupCameraMenu() {
         if (cameraProvider == null) return;
 
@@ -788,6 +1033,9 @@ public class MainActivity extends AppCompatActivity {
         popupMenu.show();
     }
 
+    /*
+    Remove or archive this
+     */
     @OptIn(markerClass = {ExperimentalCamera2Interop.class, ExperimentalCamera2Interop.class})
     private void populateCameraMenu(Menu menu) {
         try {
@@ -869,6 +1117,9 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
+    /*
+    Remove or archive this
+     */
     @OptIn(markerClass = {ExperimentalCamera2Interop.class, ExperimentalCamera2Interop.class})
     private void showCameraMenu() {
         if (cameraProvider == null) return;
@@ -1394,7 +1645,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private void takePhotoAsBitmap(OnBitmapReady callback) {
+    private void takePhotoAsBitmapOLD(OnBitmapReady callback) {
         if (imageCapture == null) {
             Log.e("CAMERA", "Camera not ready");
             return;
@@ -1435,7 +1686,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void takePhotoAsBitmapSony(OnBitmapReady callback) {
-        cameraClient.takePicture(new SonyCameraClient.OnPictureTakenListener() {
+        sonyCameraClient.takePicture(new SonyCameraClient.OnPictureTakenListener() {
 
             @Override
             public void onSuccess(String imageUrl) {
@@ -1895,11 +2146,11 @@ public class MainActivity extends AppCompatActivity {
         ImageProcessor imgProcessor = new ImageProcessor();
         // Dictates which row will be interlaced, every even row (2), or every 20th...
         int modValue = delay;
-        takePhotoAsBitmap(bitmapA -> {
+        cameraClient.takePhotoAsBitmap(bitmapA -> {
 
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
 
-                takePhotoAsBitmap(bitmapB -> {
+                cameraClient.takePhotoAsBitmap(bitmapB -> {
 
                     Bitmap imgA = bitmapA;
                     Bitmap imgB = bitmapB;

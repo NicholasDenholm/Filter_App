@@ -25,7 +25,7 @@ VISUALIZATION
 IMAGE PROCESSING
 [x] Move grayscale filter into ImageProcessor
 [x] Add image resizing helper
-[] Make a image resizing helper that applies computed mask to original image
+[x] Make an image resizing helper that applies computed mask to original image
 [] Add bitmap copy utilities?
 [] Add RGB normalization helper
 
@@ -45,6 +45,14 @@ ANDROID ARCHITECTURE
 [] Create RGBPixel model?
 [] Create Cluster model?
 [x] Reduce MainActivity to UI-only logic
+
+UI REFORMATING
+[x] Standardize the colour scheme
+[x] Apply colour scheme to XML/Text
+[x] Make side menus
+[~] Populate and test side menus
+[] Find solution for zoom bar
+[] Reformat the main image, camera, filter view
 
 PERFORMANCE
 [] try to get around getPixel() bottleneck?
