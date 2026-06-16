@@ -42,6 +42,7 @@ import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.camera2.interop.Camera2CameraInfo;
@@ -60,6 +61,7 @@ import androidx.core.content.FileProvider;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.Request;
 import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.transition.Transition;
 import com.google.android.material.button.MaterialButton;
@@ -77,6 +79,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -176,7 +183,7 @@ public class MainActivity extends AppCompatActivity {
     private ArrayAdapter<CameraOption> cameraAdapter;
 
     // Holds the currently active camera configuration
-    //private CameraOption activeCameraOption;
+    private CameraOption activeCameraOption;
 
 
     // Default lens is back
@@ -196,13 +203,6 @@ public class MainActivity extends AppCompatActivity {
     // private ImageCapture imageCapture;
 
     //private List<CameraOption> availableCamerasList = new ArrayList<>();
-
-
-
-
-
-
-
 
 
     // Then handle the result
@@ -241,7 +241,7 @@ public class MainActivity extends AppCompatActivity {
 
         sonyCameraClient = new SonyCameraClient();
 
-        cameraClient = new AndroidCameraClient(this, this, imageView);
+        cameraClient = new AndroidCameraClient(this, this, imageView, getActivityResultRegistry());
 
         // Checks the version so that the proper save function is called
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -570,36 +570,41 @@ public class MainActivity extends AppCompatActivity {
     // ── Buttons ───────────────────────────────────────────────────────────
     private void setupButtons() {
 
+        /*
         // Sony Camera button: launch camera
         buttonPhoto.setOnClickListener(v -> {
             takePhotoAsBitmapSony(bitmap -> {
-                currentImage = bitmap;
-                ImageView imageView = findViewById(R.id.image_view);
-                imageView.setImageBitmap(bitmap);
+                setCurrentImage(bitmap);
             });
         });
 
         // Default phone Camera button (backfacing)
         buttonPhoneCamera.setOnClickListener(v -> {
-            Log.d("MAIN_CAMERA_DEBUG", "Capture button clicked. Passing command to cameraClient...");
-
             cameraClient.takePhotoAsBitmap(rotatedBitmap -> {
-                Log.d("MAIN_DEBUG", "Bitmap received in MainActivity! Displaying in ImageView.");
-
-                //this.currentImage = rotatedBitmap;
                 setCurrentImage(rotatedBitmap);
-
-                // This is safe to run directly because the client already shifted us to the Main Looper thread
-                imageView.setImageBitmap(rotatedBitmap);
             });
-            /* Crashes
-            cameraClient.takePhotoAsBitmap(bitmap -> {
-                currentImage = bitmap;
-                imageView.setImageBitmap(bitmap);
-                cameraClient.logCameraState("Take picture button line 570");
-            });
+        });
 
-             */
+         */
+
+        buttonPhoneCamera.setOnClickListener(v -> {
+            if (activeCameraOption == null) {
+                Log.w("MAIN_CAMERA_DEBUG", "Capture aborted: No camera selected.");
+                return;
+            }
+
+            // Route to the appropriate isolated helper function
+            if ("666".equals(activeCameraOption.logicalId)) {
+                Log.w("MAIN_CAMERA_DEBUG", "Capture with sony camera");
+                captureSonyPhoto();
+
+            } else if ("999".equals(activeCameraOption.logicalId)) {
+                Log.w("MAIN_CAMERA_DEBUG", "Capture with system camera");
+                captureSystemFallbackPhoto();
+            } else {
+                Log.w("MAIN_CAMERA_DEBUG", "Capture with CameraX camera");
+                captureInternalCameraXPhoto();
+            }
         });
 
         // Apply filter button
@@ -736,12 +741,45 @@ public class MainActivity extends AppCompatActivity {
      */
 
     private void setupSpinnerListener(List<CameraOption> cameras) {
+        Boolean debug = true;
+
         switchCameraFacingSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 CameraOption selected = cameras.get(position);
-                if (selected.isSystemFallback) {
-                    cameraClient.openSystemCameraApp(); // Keep activity fallback routing here
+                activeCameraOption = selected;
+                if (debug) Log.d("SETUP_CAMERA_DEBUG", "The camera is: " + selected.label + " | "  + selected.logicalId + " | " + selected.facing + " | ");
+
+                // System Camera selected
+                if (selected.isSystemFallback || (selected.logicalId.equals("999"))) {
+                    if (debug) Log.d("SETUP_CAMERA_DEBUG", "System Camera selcted");
+
+                    /*
+                    cameraClient.openSystemCameraApp(correctedBitmap -> {
+                        if (debug)
+                            Log.d("SETUP_CAMERA_DEBUG", "High-res system image received! Displaying on UI.");
+                        setCurrentImage(correctedBitmap);
+                    });
+
+                     */
+
+                    // Sony Camera selected
+                    /*
+                } if (selected.isSystemFallback || (selected.logicalId.equals("666"))) {
+                    if (debug) Log.d("SETUP_CAMERA_DEBUG", "System Camera selcted");
+
+                    sonyCameraClient.takePicture(OnPictureTakenListener -> {
+                        takePhotoAsBitmapSony(OnPictureTakenListener);
+                        //setCurrentImage();
+                    });
+
+                     */
+
+                    // other front or back camera
+                }
+                if (selected.logicalId.equals("666")) {
+                    if (debug) Log.d("SETUP_CAMERA_DEBUG", "Sony Camera selcted");
+
                 } else {
                     cameraClient.bindCameraUseCasesBySelection(selected);
                 }
@@ -749,6 +787,28 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    private void captureSonyPhoto() {
+        Log.d("MAIN_CAMERA_DEBUG", "Triggering Sony External API capture...");
+        takePhotoAsBitmapSonyOG(bitmap -> {
+            setCurrentImage(bitmap);
+        });
+    }
+
+    private void captureSystemFallbackPhoto() {
+        Log.d("MAIN_CAMERA_DEBUG", "Launching native system camera application intent...");
+        cameraClient.openSystemCameraApp(correctedBitmap -> {
+            setCurrentImage(correctedBitmap);
+        });
+    }
+
+    private void captureInternalCameraXPhoto() {
+        Log.d("MAIN_CAMERA_DEBUG", "Capturing frame natively via CameraX pipeline...");
+        cameraClient.takePhotoAsBitmap(rotatedBitmap -> {
+            Log.d("MAIN_DEBUG", "Bitmap received in MainActivity! Displaying in ImageView.");
+            setCurrentImage(rotatedBitmap);
         });
     }
 
@@ -789,7 +849,7 @@ public class MainActivity extends AppCompatActivity {
         Log.d("SETUP BUTTONS", "downscale = " + downscaleEnabled);
     }
 
-
+    // ---------- Filter seek bar methods
     // Track the minimum offset manually instead of using SeekBar.setMin() (API 26+).
     // The SeekBar internally always runs from 0; add seekMin when reading progress.
     private int seekMin = 0;
@@ -844,19 +904,8 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ── Filter application ────────────────────────────────────────────────
-    private void applyFilter(String filter, int intensity) {
-        // Show spinner, disable button while processing
-        //progressBar.setVisibility(View.VISIBLE);
-        //buttonProcess.setEnabled(false);
 
-        // Trying just old method instead of async
-        setLoading(true);
-        //applyFilterOfChoice(filter, intensity);
-        applyConfigFilterOfChoice(filter, currentFilterConfig);
-
-    }
-
+    // ----------- Taking Photos ---------------------------------------------
     private void takePhotoAsBitmapOLD(OnBitmapReady callback) {
         if (imageCapture == null) {
             Log.e("CAMERA", "Camera not ready");
@@ -897,7 +946,58 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    private void takePhotoAsBitmapSony(OnBitmapReady callback) {
+    private void takePhotoAsBitmapSony(String imageUrl, OnBitmapReady callback) {
+        Log.d("MAIN_CAMERA_DEBUG", "Forwarding download request to shared Sony camera client...");
+
+        isCameraCapturing = true;
+        // 1. You MUST call takePicture first to wake up the camera hardware
+        sonyCameraClient.takePicture(new SonyCameraClient.OnPictureTakenListener() {
+            @Override
+            public void onSuccess(String imageUrl) {
+                Log.d("MAIN_CAMERA_DEBUG", "Step 2: Shutter success! Got URL from server: " + imageUrl);
+
+                // 2. CRITICAL: Only call the downloader INSIDE this success block
+                // using the exact 'imageUrl' string provided by the camera!
+                runOnUiThread(() -> {
+                    takePhotoAsBitmapSony(imageUrl, bitmap -> {
+                        Log.d("MAIN_CAMERA_DEBUG", "Step 3: Bitmap downloaded. Rendering to UI.");
+                        currentImage = bitmap;
+                        imageView.setImageBitmap(bitmap);
+                        isCameraCapturing = false;
+                    });
+                });
+            }
+
+            @Override
+            public void onError(Exception e) {
+                Log.e("MAIN_CAMERA_DEBUG", "Sony hardware failed to snap photo", e);
+                runOnUiThread(() ->
+                        Toast.makeText(MainActivity.this, "Camera hardware error", Toast.LENGTH_SHORT).show()
+                );
+            }
+        });
+        /*
+        // Call the newly implemented helper method in your client class
+        sonyCameraClient.downloadBitmap(imageUrl, new SonyCameraClient.OnBitmapReadyListener() {
+            @Override
+            public void onSuccess(Bitmap bitmap) {
+                Log.d("MAIN_CAMERA_DEBUG", "Sony client successfully delivered bitmap asset.");
+                // Already safely on the UI thread due to the handler inside SonyCameraClient!
+                callback.onReady(bitmap);
+            }
+
+            @Override
+            public void onError(Exception e) {
+                Log.e("MAIN_CAMERA_DEBUG", "Failed to retrieve Sony bitmap via client framework", e);
+                Toast.makeText(MainActivity.this, "Failed to download image from camera", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+         */
+    }
+
+    // TODO figure out how to move this method to SonyCameraClient
+    private void takePhotoAsBitmapSonyOG(OnBitmapReady callback) {
         sonyCameraClient.takePicture(new SonyCameraClient.OnPictureTakenListener() {
 
             @Override
@@ -925,6 +1025,31 @@ public class MainActivity extends AppCompatActivity {
                 Log.e("SONY CAMERA", "Failed to take picture", e);
             }
         });
+    }
+
+    // Needed for Interlace
+    //TODO try and see if this method can be used in both interalce and regular button presses
+    private void takeSinglePhotoAsBitmap(OnBitmapReady callback) {
+        if (activeCameraOption == null) {
+            Log.w("MAIN_CAMERA_DEBUG", "Cannot capture bitmap: No camera active.");
+            return;
+        }
+
+        // SOURCE 1: Sony External Camera
+        if ("666".equals(activeCameraOption.logicalId)) {
+            takePhotoAsBitmapSonyOG(callback);
+            //captureSonyPhoto();
+        }
+
+        // SOURCE 2: System Camera Fallback App (Intent Launcher)
+        else if ("999".equals(activeCameraOption.logicalId)) {
+            cameraClient.openSystemCameraApp(callback::onReady);
+        }
+
+        // SOURCE 3: Internal CameraX Framework
+        else {
+            cameraClient.takePhotoAsBitmap(callback::onReady);
+        }
     }
 
     // ------------------- Setters -------------------
@@ -1070,6 +1195,19 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
     }**/
+
+    // ── Filter application ────────────────────────────────────────────────
+    private void applyFilter(String filter, int intensity) {
+        // Show spinner, disable button while processing
+        //progressBar.setVisibility(View.VISIBLE);
+        //buttonProcess.setEnabled(false);
+
+        // Trying just old method instead of async
+        setLoading(true);
+        //applyFilterOfChoice(filter, intensity);
+        applyConfigFilterOfChoice(filter, currentFilterConfig);
+
+    }
 
     // Depreciated method
     private void applyFilterOfChoice(String filter, int k) {
@@ -1351,7 +1489,46 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ---- Interlaced
+
     private void captureInterlaced(int delay, OnFilterDoneCallback onDone) {
+        ImageProcessor imgProcessor = new ImageProcessor();
+
+        // 1. Capture the first frame from whichever camera is active
+        takeSinglePhotoAsBitmap(bitmapA -> {
+            Log.d("INTERLACE_DEBUG", "First frame captured successfully.");
+
+            // Wait out your configured delay sequence
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+
+                // 2. Capture the second frame from the same active camera
+                takeSinglePhotoAsBitmap(bitmapB -> {
+                    Log.d("INTERLACE_DEBUG", "Second frame captured successfully. Processing...");
+
+                    Bitmap imgA = bitmapA;
+                    Bitmap imgB = bitmapB;
+
+                    if (downscaleEnabled) {
+                        imgA = imgProcessor.scaleBitmap(bitmapA, 1000);
+                        imgB = imgProcessor.scaleBitmap(bitmapB, 1000);
+                    }
+
+                    // Compile the interlaced row modifications
+                    Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(imgA, imgB, delay);
+
+                    runOnUiThread(() -> {
+                        currentImage = resultInterlaced;
+                        setCurrentImage(resultInterlaced);
+                        saveBitmapToGallery(resultInterlaced);
+                        onDone.onDone();
+                    });
+                });
+
+            }, 2 * 850); // ~1700ms delay between frames
+        });
+    }
+
+    // Only works with CameraX
+    private void captureInterlacedOld(int delay, OnFilterDoneCallback onDone) {
         ImageProcessor imgProcessor = new ImageProcessor();
         // Dictates which row will be interlaced, every even row (2), or every 20th...
         int modValue = delay;

@@ -5,7 +5,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    >
 
     <!-- ScrollView on top of drawers so when side menus are open they are not obstructed -->
     <ScrollView
@@ -14,7 +15,12 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/main_background"
-        android:fillViewport="true">
+        android:fillViewport="true"
+        android:paddingStart="1dp"
+        android:paddingEnd="1dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="16dp"
+        >
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -29,7 +35,7 @@
                 android:layout_height="56dp"
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
-                android:background="#1A1A1A">
+                android:background="@color/card_background">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_open_left_menu"
@@ -116,12 +122,14 @@
                 android:gravity="center_vertical"
                 android:layout_marginBottom="16dp">
 
+                <!-- Old sony camera button
                 <Button
                     android:id="@+id/button_photo"
                     android:layout_width="wrap_content"
                     android:layout_height="48dp"
                     android:text="Sony"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                    -->
 
                 <Button
                     android:id="@+id/button_phone_camera"
@@ -130,6 +138,16 @@
                     android:text="Camera"
                     android:layout_marginStart="8dp"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+
+                <!-- Apply filter button -->
+                <Button
+                    android:id="@+id/button_process"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:text="Apply Filter"
+                    android:layout_marginStart="20dp"
+                    android:layout_marginEnd="20dp"
+                    style="@style/Widget.MaterialComponents.Button"/>
 
                 <!--
                 <com.google.android.material.button.MaterialButton
@@ -153,15 +171,6 @@
                 android:max="100"
                 android:progress="0" />
 
-            <Button
-                android:id="@+id/button_process"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:text="Apply Filter"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="25dp"
-                style="@style/Widget.MaterialComponents.Button"/>
-
             <!-- ── Progress bar (hidden until processing) ─────────── -->
             <ProgressBar
                 android:id="@+id/progressBar"
@@ -170,6 +179,7 @@
                 android:layout_gravity="center_horizontal"
                 android:indeterminateTint="@color/light_pink"
                 android:visibility="gone" />
+
 
         </LinearLayout>
     </ScrollView>

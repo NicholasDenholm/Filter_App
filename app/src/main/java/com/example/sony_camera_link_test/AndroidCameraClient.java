@@ -19,6 +19,7 @@ import android.widget.ImageView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.ActivityResultRegistry;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.camera.camera2.interop.Camera2CameraInfo;
@@ -57,8 +58,12 @@ public class AndroidCameraClient {
     private final List<CameraOption> availableCamerasList = new ArrayList<>();
     private static CameraOption activeCameraOption;
 
+    // The launcher now lives gracefully inside the client class instance
+    private final ActivityResultLauncher<Intent> cameraIntentLauncher;
+
     private String currentPhotoPath;
     private Uri photoURI;
+    private MainActivity.OnBitmapReady fallbackCallback; // Tracks the active UI callback
 
     Boolean debug = true;
 
@@ -72,10 +77,33 @@ public class AndroidCameraClient {
     }
 
 
-    public AndroidCameraClient(Context context, LifecycleOwner lifecycleOwner, ImageView previewView) {
+    public AndroidCameraClient(Context context, LifecycleOwner lifecycleOwner, ImageView previewView, ActivityResultRegistry registry) {
         this.context = context;
         this.lifecycleOwner = lifecycleOwner;
         this.previewView = previewView;
+
+        this.cameraIntentLauncher = registry.register("system_camera_fallback", lifecycleOwner,
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK) {
+                        try {
+                            Log.d("CAMERA_INTENT", "System camera returned OK. Processing file...");
+                            Bitmap fullResBitmap = BitmapFactory.decodeFile(currentPhotoPath);
+
+                            // Fixed 90 CCW rotation issue
+                            Bitmap correctedBitmap = rotateBitmap(fullResBitmap, 90);
+
+                            // 3. Fire the stored callback to pass the bitmap safely back to MainActivity
+                            if (fallbackCallback != null && correctedBitmap != null) {
+                                fallbackCallback.onReady(correctedBitmap);
+                            }
+
+                        } catch (Exception e) {
+                            Log.e("CAMERA_INTENT", "Failed to parse full resolution photo", e);
+                            Toast.makeText(context, "Error loading image", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
     }
 
     // ── Setup ───────────────────────────────────────────────────────────
@@ -197,6 +225,9 @@ public class AndroidCameraClient {
 
         // System fallback escape hatch
         availableCamerasList.add(new CameraOption("Open System Camera", "999", -1));
+
+        // Sony camera
+        availableCamerasList.add(new CameraOption("Sony Camera", "666", -2));
     }
 
     public int setDefaultCamera(int defaultIndex) {
@@ -270,9 +301,11 @@ public class AndroidCameraClient {
      */
 
 
+    /*
     public void openSystemCameraApp() {
         return;
     }
+     */
 
     /*
     private final ActivityResultLauncher<Intent> cameraIntentLauncher = registerForActivityResult(
@@ -296,10 +329,43 @@ public class AndroidCameraClient {
                 }
             }
     );
+
      */
 
+    public void openSystemCameraApp(MainActivity.OnBitmapReady callback) {
+        this.fallbackCallback = callback;
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+        // Cleaned up environment references using 'context.'
+        if (takePictureIntent.resolveActivity(context.getPackageManager()) != null) {
+            try {
+                File storageDir = context.getCacheDir();
+                File imageFile = File.createTempFile(
+                        "JPEG_" + System.currentTimeMillis() + "_",
+                        ".jpg",
+                        storageDir
+                );
+
+                currentPhotoPath = imageFile.getAbsolutePath();
+
+                photoURI = FileProvider.getUriForFile(context,
+                        context.getApplicationContext().getPackageName() + ".fileprovider",
+                        imageFile);
+
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+
+                Log.d("CAMERA_INTENT", "Launching fallback system camera application...");
+                cameraIntentLauncher.launch(takePictureIntent);
+
+            } catch (IOException ex) {
+                Log.e("CAMERA_INTENT", "Error creating image storage file", ex);
+                Toast.makeText(context, "Could not initialize file storage", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
     /*
-    private void openSystemCameraApp() {
+    private void openSystemCameraAppOld() {
         Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
 
         if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
@@ -330,6 +396,7 @@ public class AndroidCameraClient {
             }
         }
     }
+
      */
 
     // ── Selecting Cameras ───────────────────────────────────────────────────────────
