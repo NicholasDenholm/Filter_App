@@ -40,7 +40,7 @@
                     android:padding="0dp"
                     app:icon="@drawable/ic_menu"
                     app:iconGravity="textStart"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    style="@style/Widget.MaterialComponents.Button.Icon"
                     />
 
                 <TextView
@@ -63,7 +63,7 @@
                     android:padding="0dp"
                     app:icon="@drawable/ic_settings"
                     app:iconGravity="textStart"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"/>
+                    style="@style/Widget.MaterialComponents.Button.Icon"/>
 
             </RelativeLayout>
 
@@ -210,7 +210,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Camera Selection"
+                        android:text="Camera"
                         android:textColor="@color/white"
                         android:textSize="11sp"
                         android:letterSpacing="0.1"
@@ -382,7 +382,7 @@
 
                     </RelativeLayout>
 
-                    <!-- SeekBar: For the cluseter count -->
+                    <!-- SeekBar: For the cluster count -->
                     <SeekBar
                         android:id="@+id/seekBarFilterStrength"
                         android:layout_width="match_parent"
