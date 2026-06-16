@@ -1,7 +1,5 @@
 package com.example.sony_camera_link_test;
 
-
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;

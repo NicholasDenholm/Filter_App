@@ -22,7 +22,7 @@ public class CameraOption {
         this.isSystemFallback = true;
     }
 
-    // CRITICAL: The Spinner uses this method to decide what text to show on screen
+    // The Spinner uses this method to decide what text to show on screen
     @Override
     public String toString() {
         return label;

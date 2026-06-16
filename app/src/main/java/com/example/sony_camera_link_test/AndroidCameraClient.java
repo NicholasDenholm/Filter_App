@@ -1,14 +1,26 @@
 package com.example.sony_camera_link_test;
 
+import static com.example.sony_camera_link_test.ImageProcessor.rotateBitmap;
+
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.hardware.camera2.CameraCharacteristics;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.Log;
+import android.view.MenuItem;
 import android.widget.ImageView;
+import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.ActivityResultRegistry;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
@@ -22,10 +34,13 @@ import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.lifecycle.LifecycleOwner;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -43,6 +58,13 @@ public class AndroidCameraClient {
     private final List<CameraOption> availableCamerasList = new ArrayList<>();
     private static CameraOption activeCameraOption;
 
+    // The launcher now lives gracefully inside the client class instance
+    private final ActivityResultLauncher<Intent> cameraIntentLauncher;
+
+    private String currentPhotoPath;
+    private Uri photoURI;
+    private MainActivity.OnBitmapReady fallbackCallback; // Tracks the active UI callback
+
     Boolean debug = true;
 
     // Interface callback to notify Activity when data is ready
@@ -55,12 +77,36 @@ public class AndroidCameraClient {
     }
 
 
-    public AndroidCameraClient(Context context, LifecycleOwner lifecycleOwner, ImageView previewView) {
+    public AndroidCameraClient(Context context, LifecycleOwner lifecycleOwner, ImageView previewView, ActivityResultRegistry registry) {
         this.context = context;
         this.lifecycleOwner = lifecycleOwner;
         this.previewView = previewView;
+
+        this.cameraIntentLauncher = registry.register("system_camera_fallback", lifecycleOwner,
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == Activity.RESULT_OK) {
+                        try {
+                            Log.d("CAMERA_INTENT", "System camera returned OK. Processing file...");
+                            Bitmap fullResBitmap = BitmapFactory.decodeFile(currentPhotoPath);
+
+                            // Fixed 90 CCW rotation issue
+                            Bitmap correctedBitmap = rotateBitmap(fullResBitmap, 90);
+
+                            // 3. Fire the stored callback to pass the bitmap safely back to MainActivity
+                            if (fallbackCallback != null && correctedBitmap != null) {
+                                fallbackCallback.onReady(correctedBitmap);
+                            }
+
+                        } catch (Exception e) {
+                            Log.e("CAMERA_INTENT", "Failed to parse full resolution photo", e);
+                            Toast.makeText(context, "Error loading image", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
     }
 
+    // ── Setup ───────────────────────────────────────────────────────────
     public void setupCamera(AndroidCameraClientListener listener) {
         Log.d("CAMERA_CLIENT_DEBUG", "1. setupCamera() called inside client. Fetching ProcessCameraProvider instance...");
 
@@ -85,15 +131,16 @@ public class AndroidCameraClient {
                     Log.d("CAMERA_CLIENT_DEBUG", "6. Firing listener.onCameraListReady callback to MainActivity...");
                     listener.onCameraListReady(availableCamerasList);
                 } else {
-                    Log.w("CAMERA_CLIENT_DEBUG", "⚠️ Warning: setupCamera was called, but the passed listener interface is NULL!");
+                    Log.w("CAMERA_CLIENT_DEBUG", "Warning: setupCamera was called, but the passed listener interface is NULL!");
                 }
 
             } catch (Exception e) {
                 // If an exception happens anywhere above, it jumps here and bypasses the listener completely!
-                Log.e("CAMERA_CLIENT_DEBUG", "❌ CRASH inside setupCamera try/catch block!", e);
+                Log.e("CAMERA_CLIENT_DEBUG", "CRASH inside setupCamera try/catch block!", e);
             }
         }, ContextCompat.getMainExecutor(context));
     }
+
     public void setupCameraBROKEN(AndroidCameraClientListener listener) {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(context);
 
@@ -110,6 +157,9 @@ public class AndroidCameraClient {
                 //setupCameraSpinner();
                 setDefaultCamera(0);
 
+                // THIS IS THE CORRECTION!
+                listener.onCameraListReady(availableCamerasList);
+
                 if (debug) logCameraState("DEFUALT AFTER");
 
             } catch (Exception e) {
@@ -118,12 +168,39 @@ public class AndroidCameraClient {
         }, ContextCompat.getMainExecutor(context));
     }
 
-
     private void populateCameraList() {
         availableCamerasList.clear();
         if (cameraProvider == null) return;
 
         try {
+            // TODO Try to better populate the menu with this approach
+            /*
+            for (CameraInfo info : allCameras) {
+                String camId = Camera2CameraInfo.from(info).getCameraId();
+                @SuppressLint("RestrictedApi") CameraCharacteristics chars = Camera2CameraInfo.extractCameraCharacteristics(info);
+
+                Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
+                float[] focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                float focal = (focalLengths != null && focalLengths.length > 0) ? focalLengths[0] : 0.0f;
+
+                Log.d("POPULATE_CAMERA_MENU_DEBUG", "ID: " + camId + " | Facing: " + facing + " | Focal Length: " + focal);
+
+                // Determine user-friendly label using our resolver
+                String label = resolveLensLabel(camId, facing, focal);
+                if (label == null) continue;
+
+                // Create item and bundle metadata payload
+                MenuItem item = menu.add(Menu.NONE, camId.hashCode(), Menu.NONE, label);
+                Intent dataBundle = new Intent();
+                dataBundle.putExtra("LOGICAL_ID", camId);
+                dataBundle.putExtra("FACING", facing);
+                item.setIntent(dataBundle);
+            }
+
+            // Inject the explicit fallback system action at the end
+            menu.add(Menu.NONE, 999, Menu.NONE, "System Camera");
+             */
+
             for (CameraInfo info : cameraProvider.getAvailableCameraInfos()) {
                 int lensFacing = info.getLensFacing();
 
@@ -148,6 +225,9 @@ public class AndroidCameraClient {
 
         // System fallback escape hatch
         availableCamerasList.add(new CameraOption("Open System Camera", "999", -1));
+
+        // Sony camera
+        availableCamerasList.add(new CameraOption("Sony Camera", "666", -2));
     }
 
     public int setDefaultCamera(int defaultIndex) {
@@ -168,6 +248,158 @@ public class AndroidCameraClient {
         //switchCameraFacingSpinner.setSelection(defaultIndex);
         return defaultIndex;
     }
+
+    // TODO use this helper to make menu more informative
+    private String resolveLensLabel(String camId, Integer facing, float focal) {
+        if (facing == null) return null;
+
+        if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
+            return camId.equals("1") ? "Front Camera" : "Front Camera (Wide Angle)";
+        }
+
+        if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+            if (focal <= 2.5f) {
+                return "Ultra-Wide Camera";
+            } else if (focal > 6.0f) {
+                return "Telephoto Camera";
+            } else {
+                return "Main Back Camera (ID " + camId + ")";
+            }
+        }
+
+        return null; // Fallback for unknown or external lenses
+    }
+
+    // TODO fix the openSystemCamera app
+    /*
+    private boolean handleMenuSelection(MenuItem item) {
+        // Action A: Escape hatch to native app
+        if (item.getItemId() == 999) {
+            openSystemCameraApp();
+            return true;
+        }
+
+        //DrawerLayout drawerLayout = findViewById(R.id.drawer_layout);
+        //drawerLayout.openDrawer(GravityCompat.START);
+
+        // Action B: Bind a custom internal CameraX lens
+        Intent intent = item.getIntent();
+        if (intent != null) {
+            selectedLogicalCameraId = intent.getStringExtra("LOGICAL_ID");
+            int facing = intent.getIntExtra("FACING", CameraCharacteristics.LENS_FACING_BACK);
+
+            currentLensFacing = (facing == CameraCharacteristics.LENS_FACING_FRONT)
+                    ? CameraSelector.LENS_FACING_FRONT
+                    : CameraSelector.LENS_FACING_BACK;
+
+            Toast.makeText(this, item.getTitle() + " Activated", Toast.LENGTH_SHORT).show();
+            bindCameraUseCases();
+        }
+        return true;
+    }
+
+     */
+
+
+    /*
+    public void openSystemCameraApp() {
+        return;
+    }
+     */
+
+    /*
+    private final ActivityResultLauncher<Intent> cameraIntentLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK) {
+                    try {
+                        // The photo is saved! Decode the file path back into a high-res Bitmap
+                        Bitmap fullResBitmap = BitmapFactory.decodeFile(currentPhotoPath);
+
+                        // Fixed 90 CCW rotation issue
+                        Bitmap correctedBitmap = rotateBitmap(fullResBitmap, 90);
+
+                        // Pass it directly to your existing method
+                        setCurrentImage(correctedBitmap);
+
+                    } catch (Exception e) {
+                        Log.e("CAMERA_INTENT", "Failed to parse full resolution photo", e);
+                        Toast.makeText(this, "Error loading image", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+    );
+
+     */
+
+    public void openSystemCameraApp(MainActivity.OnBitmapReady callback) {
+        this.fallbackCallback = callback;
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+        // Cleaned up environment references using 'context.'
+        if (takePictureIntent.resolveActivity(context.getPackageManager()) != null) {
+            try {
+                File storageDir = context.getCacheDir();
+                File imageFile = File.createTempFile(
+                        "JPEG_" + System.currentTimeMillis() + "_",
+                        ".jpg",
+                        storageDir
+                );
+
+                currentPhotoPath = imageFile.getAbsolutePath();
+
+                photoURI = FileProvider.getUriForFile(context,
+                        context.getApplicationContext().getPackageName() + ".fileprovider",
+                        imageFile);
+
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+
+                Log.d("CAMERA_INTENT", "Launching fallback system camera application...");
+                cameraIntentLauncher.launch(takePictureIntent);
+
+            } catch (IOException ex) {
+                Log.e("CAMERA_INTENT", "Error creating image storage file", ex);
+                Toast.makeText(context, "Could not initialize file storage", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    /*
+    private void openSystemCameraAppOld() {
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
+        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+            try {
+                // 1. Create an empty temporary file in your app cache
+                File storageDir = getCacheDir();
+                File imageFile = File.createTempFile(
+                         "JPEG_" + System.currentTimeMillis() + "_",
+                        ".jpg",
+                        storageDir
+                        );
+
+                // Save the absolute string path for reading later
+                currentPhotoPath = imageFile.getAbsolutePath();
+
+                // Wrap the file in a secure content URI using the provider we defined in Manifest
+                photoURI = FileProvider.getUriForFile(this,
+                        getApplicationContext().getPackageName() + ".fileprovider",
+                        imageFile);
+
+                // Tell the Samsung/System camera to drop the full image data into this URI location
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+                cameraIntentLauncher.launch(takePictureIntent);
+
+            } catch (IOException ex) {
+                Log.e("CAMERA_INTENT", "Error creating image storage file", ex);
+                Toast.makeText(this, "Could not initialize file storage", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+     */
+
+    // ── Selecting Cameras ───────────────────────────────────────────────────────────
 
     public static void bindCameraUseCasesBySelection(CameraOption cameraOption) {
         if (cameraProvider == null || cameraOption == null) return;
@@ -213,6 +445,11 @@ public class AndroidCameraClient {
                 .build();
     }
 
+    public static Camera getCamera() {
+        return camera;
+    }
+
+    // ── Taking Photos ───────────────────────────────────────────────────────────
 
     public void takePhotoAsBitmap(OnBitmapReady callback) {
         // 1. This will now pass because 'imageCapture' is fully alive inside the client!
