@@ -192,6 +192,8 @@ public class MainActivity extends AppCompatActivity {
 
     // Store the exact camera ID we want to use
     // private String selectedLogicalCameraId = "0";
+
+    // Current camera active
     private Camera camera; // initialized in bindCameraUseCases
 
     //private List<CameraOption> availableCamerasList = new ArrayList<>();
