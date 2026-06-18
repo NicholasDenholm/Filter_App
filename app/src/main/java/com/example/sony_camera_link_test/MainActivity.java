@@ -1,11 +1,7 @@
 package com.example.sony_camera_link_test;
 
-import static com.example.sony_camera_link_test.AndroidCameraClient.bindCameraUseCasesBySelection;
-import static com.example.sony_camera_link_test.ImageProcessor.rotateBitmap;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -15,7 +11,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.graphics.drawable.Drawable;
-import android.hardware.camera2.CameraCharacteristics;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -24,15 +19,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.Spinner;
@@ -40,15 +32,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
-import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.camera.camera2.interop.Camera2CameraInfo;
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.Camera;
-import androidx.camera.core.CameraInfo;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
@@ -57,33 +42,23 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.request.Request;
 import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.transition.Transition;
 import com.google.android.material.button.MaterialButton;
-import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.OkHttpClient;
-import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -107,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
     private SeekBar seekBarFilterStrength;
     private TextView seekValueLabel;
     private TextView seekFiterStrOptLabel;
+    private TextView filterInfoTextCard;
 
     private Button buttonPhoto;
     private Button buttonPhoneCamera;
@@ -282,6 +258,7 @@ public class MainActivity extends AppCompatActivity {
         seekBarFilterStrength = findViewById(R.id.seekBarFilterStrength);
         seekValueLabel = findViewById(R.id.seek_value_label);
         seekFiterStrOptLabel = findViewById(R.id.label_clusters_block_size);
+        filterInfoTextCard = findViewById(R.id.filter_info);
 
         buttonPhoto = findViewById(R.id.button_photo); // Sony camera button
         buttonPhoneCamera = findViewById(R.id.button_phone_camera); // Phone button
@@ -334,6 +311,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedFilter = FILTER_OPTIONS[position];
+
+                Log.d("FILTER_SPINNER_CHANGE", "selected filter is: " + selectedFilter);
+
+                showInfoCard(selectedFilter);
 
                 // Set the variant (if any) for each filter type
                 // Set the default intensity or option (enum'd)
@@ -398,7 +379,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ── Filter Strenght SeekBar ───────────────────────────────────────────
+    // ── Filter Strength SeekBar ───────────────────────────────────────────
     @SuppressLint("ClickableViewAccessibility")
     private void setupSeekBar() {
 
@@ -566,6 +547,59 @@ public class MainActivity extends AppCompatActivity {
             currentFilterConfig.setVariant(values[index]);
             Log.v("SEEK BAR", "option AFTER is " + currentFilterConfig.getVariant());
             Log.v("SEEK BAR", "intensity AFTER is " + currentFilterConfig.getIntensity());
+        }
+    }
+
+    // --------- Info cards
+    private void showInfoCard(String activeFilter) {
+        // Fixed: changed 'selectedFilter' to 'activeFilter' to match the method argument
+        Log.d("INFO_CARD", "selected filter is: " + activeFilter);
+
+        // 1. Find the target TextView directly within your activity layout
+        TextView filterInfoTextCard = findViewById(R.id.filter_info);
+
+        if (filterInfoTextCard != null) {
+            String title;
+            String description;
+
+            // 2. Map the incoming option String to its respective title and description
+            switch (activeFilter) {
+                case "K-Means":
+                    title = "K-Means Quantization";
+                    description = "Clusters image colors into a distinct, optimized color palette using spatial vector quantization.";
+                    break;
+                case "Pixelate":
+                    title = "Pixelate Effect";
+                    description = "Downsamples the visual resolution into blocky pixel clusters for a retro, low-fidelity aesthetic.";
+                    break;
+                case "Grayscale":
+                    title = "Grayscale Mode";
+                    description = "Converts RGB channels into monochromatic luminance values, completely stripping color saturation.";
+                    break;
+                case "Interlaced":
+                    title = "Interlaced Framing";
+                    description = "Combines alternating row exposures or sequence frames to create high-contrast composite imagery.";
+                    break;
+                case "FloydSteinbergDithering":
+                    title = "Floyd-Steinberg Dithering";
+                    description = "Applies an error-diffusion algorithm to approximate color gradients using a highly restricted palette.";
+                    break;
+                case "ColourBlind":
+                    title = "Color Blind Assist";
+                    description = "Transforms the active color spectrum to simulate or adjust layout visibility for color-deficiencies.";
+                    break;
+                default:
+                    title = "Unknown Filter";
+                    description = "No description details available for this selection.";
+                    break;
+            }
+
+            // 3. Format the text and push it into your styled layout card
+            String detailedInfo = title + "\n" + description;
+            filterInfoTextCard.setText(detailedInfo);
+
+        } else {
+            Log.e("MAIN_CAMERA_DEBUG", "Error: filter_info TextView not found in current layout view hierarchy.");
         }
     }
 
@@ -1076,7 +1110,8 @@ public class MainActivity extends AppCompatActivity {
         } else {
             buttonProcess.setEnabled(true);
             buttonProcess.setText("Apply Filter");
-            progressBar.setVisibility(View.GONE);
+            //progressBar.setVisibility(View.GONE);
+            progressBar.setVisibility(View.INVISIBLE);
         }
     }
 
