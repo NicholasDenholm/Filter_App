@@ -111,6 +111,36 @@ public class ImageProcessor {
         return Bitmap.createScaledBitmap(filtered, originalWidth, originalHeight, false);
     }
 
+    public static int getCameraPhotoOrientation(String imagePath) {
+        int rotate = 0;
+        try {
+            androidx.exifinterface.media.ExifInterface exif = new androidx.exifinterface.media.ExifInterface(imagePath);
+            int orientation = exif.getAttributeInt(
+                    androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+            );
+
+            switch (orientation) {
+                case androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270:
+                    rotate = 270;
+                    break;
+                case androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180:
+                    rotate = 180;
+                    break;
+                case androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90:
+                    rotate = 90;
+                    break;
+                default:
+                    rotate = 0;
+                    break;
+            }
+            Log.d("CAMERA_INTENT", "EXIF Orientation tag specifies a rotation of: " + rotate + " degrees.");
+        } catch (Exception e) {
+            Log.e("CAMERA_INTENT", "Could not check EXIF orientation data", e);
+        }
+        return rotate;
+    }
+
     public static Bitmap rotateBitmap(Bitmap source, float angle) {
         if (angle == 0 || source == null) {
             return source;

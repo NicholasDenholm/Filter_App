@@ -90,8 +90,12 @@ public class AndroidCameraClient {
                             Log.d("CAMERA_INTENT", "System camera returned OK. Processing file...");
                             Bitmap fullResBitmap = BitmapFactory.decodeFile(currentPhotoPath);
 
-                            // Fixed 90 CCW rotation issue
-                            Bitmap correctedBitmap = rotateBitmap(fullResBitmap, 90);
+                            int rotationNeeded = ImageProcessor.getCameraPhotoOrientation(currentPhotoPath);
+
+                            // Fixed rotation issue with front facing camera
+                            // with prepopulated cameras: 90 CCW
+                            // with system camera front facing 180 CCW/CW
+                            Bitmap correctedBitmap = rotateBitmap(fullResBitmap, rotationNeeded);
 
                             // 3. Fire the stored callback to pass the bitmap safely back to MainActivity
                             if (fallbackCallback != null && correctedBitmap != null) {
