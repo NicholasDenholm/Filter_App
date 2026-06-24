@@ -1395,6 +1395,7 @@ public class MainActivity extends AppCompatActivity {
 
     // ------------------- Filters -------------------
     // ---- Kmeans
+    /*
     private void applyKMeans() {
 
         if (currentImage == null) {
@@ -1424,6 +1425,7 @@ public class MainActivity extends AppCompatActivity {
         // 4. Update UI image
         setCurrentImage(kMeansBMP);
     }
+     */
 
     private void applyKMeansThreaded(int k_for_kmeans, OnFilterDoneCallback onDone) {
         // No new executor needed — this method is already called from a worker thread
@@ -1441,6 +1443,23 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     ImageProcessor imgProcessor = new ImageProcessor();
+
+                    int[] pixels = imgProcessor.extractRGBValues(img);
+
+                    // Run KMeans
+                    KMeans kmeans = new KMeans(pixels, k_for_kmeans);
+                    kmeans.run();
+
+                    // Rebuild image
+                    return imgProcessor.rebuildFromClusters(
+                            img.getWidth(),
+                            img.getHeight(),
+                            //pixels,
+                            kmeans.getCentroids(),
+                            kmeans.getAssignments()
+                    );
+
+                    /*
                     // Extract pixels
                     List<float[]> points = imgProcessor.extractRGBValues(img);
 
@@ -1451,6 +1470,8 @@ public class MainActivity extends AppCompatActivity {
                     // Rebuild image
                     return imgProcessor.rebuildFromClusters(img.getWidth(), img.getHeight(),
                             points, kmeans.getCentroids(), kmeans.getAssignments());
+
+                     */
                 },
                 result -> {
                     // Update UI on main thread, then signal completion
@@ -1461,6 +1482,7 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
+    /*
     private void applyKMeansThreadedNoLoading(int k_for_kmeans, OnFilterDoneCallback onDone) {
 
         if (currentImage == null) {
@@ -1497,7 +1519,7 @@ public class MainActivity extends AppCompatActivity {
             });
         });
     }
-
+     */
     // ---- Greyscale
     private void applyGrayScale(OnFilterDoneCallback onDone) {
         if (currentImage == null) {
