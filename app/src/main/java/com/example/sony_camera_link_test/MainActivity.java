@@ -1283,48 +1283,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Trying just old method instead of async
         setLoading(true);
-        //applyFilterOfChoice(filter, intensity);
         applyConfigFilterOfChoice(filter, currentFilterConfig);
-
     }
 
-    // Depreciated method
-    private void applyFilterOfChoice(String filter, int k) {
-        OnFilterDoneCallback onDone = () -> runOnUiThread(() -> setLoading(false));
-
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        executor.execute(() -> {
-            if (filter.equals("K-Means")) {
-                Log.v("SEEK BAR", "k in k-means is " + k);
-                applyKMeansThreaded(k, onDone);
-            }
-            else if (filter.equals("Pixelate")) {
-                Log.v("SEEK BAR", "pixelation strength is " + k);
-                applyPixelated(k, onDone);
-            }
-            else if (filter.equals("Grayscale")) {
-                applyGrayScale(onDone);
-            }
-            else if (filter.equals("Interlaced")) {
-                captureInterlaced(k, onDone);
-            }
-            else if (filter.equals("FloydSteinbergDithering")) {
-                applyFloydSteinbergDithering(k, onDone);
-            }
-            else if (filter.equals("ColourBlind")) {
-                applyColourBlind(k, onDone);
-            }
-            /*
-            // Each method handles the UI filtered image display
-            // ALWAYS return to UI thread at the end
-            runOnUiThread(() -> setLoading(false));
-             */
-        });
-        // Wrong place: Animators may only be run on Looper threads
-        //setLoading(false);
-    }
-
-    // TODO Test this --> Seems to work fine
     private void applyConfigFilterOfChoice(String filter, FilterConfig config) {
         OnFilterDoneCallback onDone = () -> runOnUiThread(() -> setLoading(false));
 
@@ -1394,37 +1355,8 @@ public class MainActivity extends AppCompatActivity {
 
 
     // ------------------- Filters -------------------
+
     // ---- Kmeans
-    private void applyKMeans() {
-
-        if (currentImage == null) {
-            Log.e("APPLY KMEANS", "No image provided");
-            return;
-        }
-
-        ImageProcessor imgProcessor = new ImageProcessor();
-
-        // 1. Extract pixels FROM ORIGINAL IMAGE
-        List<float[]> points = imgProcessor.extractRGBValues(currentImage);
-
-        int k = 10;
-        // 2. Run KMeans
-        KMeans kmeans = new KMeans(points, k);
-        kmeans.run();
-
-        // 3. Rebuild image from clusters (IMPORTANT STEP YOU'RE MISSING)
-        Bitmap kMeansBMP = imgProcessor.rebuildFromClusters(
-                currentImage.getWidth(),
-                currentImage.getHeight(),
-                points,
-                kmeans.getCentroids(),
-                kmeans.getAssignments()
-        );
-
-        // 4. Update UI image
-        setCurrentImage(kMeansBMP);
-    }
-
     private void applyKMeansThreaded(int k_for_kmeans, OnFilterDoneCallback onDone) {
         // No new executor needed — this method is already called from a worker thread
 
@@ -1434,13 +1366,34 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         runAsync(() -> {
-                    // TODO this always crashes when not downscaling!
                     Bitmap img = currentImage;
                     if (downscaleEnabled) {
                         img = ImageProcessor.scaleBitmap(currentImage, 1000);
                     }
 
                     ImageProcessor imgProcessor = new ImageProcessor();
+
+                    int[] pixels = imgProcessor.extractRGBValues(img);
+
+                    // Run KMeans
+                    KMeans kmeans = new KMeans(pixels, k_for_kmeans);
+                    kmeans.run();
+
+                    // Rebuild image
+                    return imgProcessor.rebuildFromClustersFast(img.getWidth(), img.getHeight(), kmeans.getCentroids(), kmeans.getAssignments());
+
+                    /*
+                    return imgProcessor.rebuildFromClusters(
+                            img.getWidth(),
+                            img.getHeight(),
+                            //pixels, // Not really needed
+                            kmeans.getCentroids(),
+                            kmeans.getAssignments()
+                    );
+                     */
+
+                    /*
+                    // Old version with list of floats
                     // Extract pixels
                     List<float[]> points = imgProcessor.extractRGBValues(img);
 
@@ -1451,6 +1404,8 @@ public class MainActivity extends AppCompatActivity {
                     // Rebuild image
                     return imgProcessor.rebuildFromClusters(img.getWidth(), img.getHeight(),
                             points, kmeans.getCentroids(), kmeans.getAssignments());
+
+                     */
                 },
                 result -> {
                     // Update UI on main thread, then signal completion
@@ -1461,6 +1416,7 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
+    /*
     private void applyKMeansThreadedNoLoading(int k_for_kmeans, OnFilterDoneCallback onDone) {
 
         if (currentImage == null) {
@@ -1497,7 +1453,7 @@ public class MainActivity extends AppCompatActivity {
             });
         });
     }
-
+     */
     // ---- Greyscale
     private void applyGrayScale(OnFilterDoneCallback onDone) {
         if (currentImage == null) {
@@ -1604,42 +1560,6 @@ public class MainActivity extends AppCompatActivity {
 
             }, 2 * 850); // ~1700ms delay between frames
         });
-    }
-
-    // Only works with CameraX
-    private void captureInterlacedOld(int delay, OnFilterDoneCallback onDone) {
-        ImageProcessor imgProcessor = new ImageProcessor();
-        // Dictates which row will be interlaced, every even row (2), or every 20th...
-        int modValue = delay;
-        cameraClient.takePhotoAsBitmap(bitmapA -> {
-
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-
-                cameraClient.takePhotoAsBitmap(bitmapB -> {
-
-                    Bitmap imgA = bitmapA;
-                    Bitmap imgB = bitmapB;
-                    if (downscaleEnabled) {
-                        imgA = imgProcessor.scaleBitmap(bitmapA, 1000);
-                        imgB = imgProcessor.scaleBitmap(bitmapB, 1000);
-                    }
-
-                    //Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(bitmapA, bitmapB, delay);
-                    Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(imgA, imgB, delay);
-
-                    runOnUiThread(() -> {
-                        currentImage = resultInterlaced;
-                        setCurrentImage(resultInterlaced);
-                        saveBitmapToGallery(resultInterlaced);
-                        onDone.onDone();
-                    });
-
-                });
-                // Tried delay * 500 --> too short for sony camera, try static ~1500ms
-            }, 2 * 850);
-        });
-
-
     }
 
     // ---- Dithering
