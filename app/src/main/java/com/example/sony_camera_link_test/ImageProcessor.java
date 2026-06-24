@@ -1,7 +1,9 @@
 package com.example.sony_camera_link_test;
 
+
 import static com.example.sony_camera_link_test.MathUtils.DEUTERANOPIA;
 import static com.example.sony_camera_link_test.MathUtils.DOG_SIMULATION;
+import static com.example.sony_camera_link_test.MathUtils.GRAYSCALE;
 import static com.example.sony_camera_link_test.MathUtils.LMS_TO_RGB;
 import static com.example.sony_camera_link_test.MathUtils.PROTANOPIA;
 import static com.example.sony_camera_link_test.MathUtils.RGB_TO_LMS;
@@ -95,7 +97,7 @@ public class ImageProcessor {
                 Math.round(height * scale), true);
     }
 
-    // Still too loossy, so I will just stay with the option to process filter at full image size
+    // Still too lossy, so I will just stay with the option to process filter at full image size
     public static Bitmap processWithDownscale(Bitmap source, int processingSize, MainActivity.BitmapFilter filter) {
 
         int originalWidth = source.getWidth();
@@ -631,25 +633,30 @@ public class ImageProcessor {
                 PROTANOPIA,
                 DEUTERANOPIA,
                 TRITANOPIA,
-                DOG_SIMULATION
+                DOG_SIMULATION,
+                GRAYSCALE
         };
 
-        float[][] matrix = transMatrices[option];
+        if (option == 4) {
+            return toGrayScale(src);
+        } else {
+            float[][] matrix = transMatrices[option];
 
-        Bitmap imageOut = imageToBitmap(src);
-        int width = imageOut.getWidth();
-        int height = imageOut.getHeight();
+            Bitmap imageOut = imageToBitmap(src);
+            int width = imageOut.getWidth();
+            int height = imageOut.getHeight();
 
-        int[] pixels = new int[width * height];
+            int[] pixels = new int[width * height];
 
-        src.getPixels(pixels, 0, width, 0, 0, width, height);
+            src.getPixels(pixels, 0, width, 0, 0, width, height);
 
-        for (int i = 0; i < pixels.length; i++) {
-            pixels[i] = simulateColorBlindness(pixels[i], matrix);
+            for (int i = 0; i < pixels.length; i++) {
+                pixels[i] = simulateColorBlindness(pixels[i], matrix);
+            }
+
+            imageOut.setPixels(pixels, 0, width, 0, 0, width, height);
+            return imageOut;
         }
-
-        imageOut.setPixels(pixels, 0, width, 0, 0, width, height);
-        return imageOut;
     }
 
 

@@ -83,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView seekValueLabel;
     private TextView seekFiterStrOptLabel;
     private TextView filterInfoTextCard;
+    private TextView subFilterInfoTextCard;
 
     private Button buttonPhoto;
     private Button buttonPhoneCamera;
@@ -130,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] FILTER_OPTIONS = {
             "K-Means",
             "Pixelate",
-            "Grayscale",
+            //"Grayscale", // moved into colourblind
             "Interlaced",
             "FloydSteinbergDithering",
             "ColourBlind"
@@ -334,6 +335,7 @@ public class MainActivity extends AppCompatActivity {
                         updateSeekBarTicks("2", "21", "40");
                         updateFilterOptionLabel("PIXELATION STRENGTH");
                         break;
+                    /* Moved to colour blind
                     case 2: // Grayscale — 1–2 (no real range needed)
                         //currentFilterConfig.setVariant(null);
                         currentFilterConfig.setVariant(ColourBlindFilterOption.GRAYSCALE);
@@ -341,21 +343,23 @@ public class MainActivity extends AppCompatActivity {
                         updateSeekBarTicks("", "", "");
                         updateFilterOptionLabel("");
                         break;
-                    case 3: // Interlace — 0–7
+
+                     */
+                    case 2: // Interlace — 0–7
                         currentFilterConfig.setVariant(InterlaceFilterOption.VERTICAL_STRIPES);
                         setSeekBarRange(0, 7);
                         updateSeekBarTicks("0", "", "7");
                         updateFilterOptionLabel("OPTION");
                         break;
-                    case 4: // FloydSteinbergDithering — 0–5
+                    case 3: // FloydSteinbergDithering — 0–5
                         currentFilterConfig.setVariant(DitherFilterOption.useFloydSteinbergDitheringOption2);
                         setSeekBarRange(0, 6);
                         updateSeekBarTicks("0", "", "6");
                         updateFilterOptionLabel("OPTION");
                         break;
-                    case 5: // colour blind — 0–5 options?
+                    case 4: // colour blind — 0–6 options
                         currentFilterConfig.setVariant(ColourBlindFilterOption.PROTANOPIA);
-                        setSeekBarRange(0,5);
+                        setSeekBarRange(0,6);
                         updateSeekBarTicks("0", "", "5");
                         updateFilterOptionLabel("OPTION");
                         break;
@@ -460,6 +464,12 @@ public class MainActivity extends AppCompatActivity {
     private String formatSeekBarLabel(FilterConfig config) {
         // Just check at the start if it is kmeans, pixelate, or Grayscale
         if (config.getVariant() == null) {
+            if (selectedFilter.equals("K-Means")) {
+                showSubInfoCard(FilterInfo.K_MEANS, 0);
+            }
+            if (selectedFilter.equals("Pixelate")) {
+                showSubInfoCard(FilterInfo.PIXELATE, 0);
+            }
             return String.valueOf(config.getIntensity());
         }
 
@@ -467,16 +477,22 @@ public class MainActivity extends AppCompatActivity {
             InterlaceFilterOption mode = (InterlaceFilterOption) config.getVariant();
             switch (mode) {
                 case CHECKERED:
+                    showSubInfoCard(FilterInfo.INTERLACED, 0);
                     return "Checkered";
                 case VERTICAL_STRIPES:
+                    showSubInfoCard(FilterInfo.INTERLACED, 1);
                     return "Vertical Stripes";
                 case HALF_HALF:
+                    showSubInfoCard(FilterInfo.INTERLACED, 2);
                     return "Half / Half";
                 case NOISE:
+                    showSubInfoCard(FilterInfo.INTERLACED, 3);
                     return "Noise";
                 case SWIRL:
+                    showSubInfoCard(FilterInfo.INTERLACED, 4);
                     return "Swirl";
                 case GRID_PATTERN:
+                    showSubInfoCard(FilterInfo.INTERLACED, 5);
                     return "Grid";
             }
         }
@@ -485,14 +501,19 @@ public class MainActivity extends AppCompatActivity {
             DitherFilterOption mode = (DitherFilterOption) config.getVariant();
             switch (mode) {
                 case useFloydSteinbergDitheringOption1:
+                    showSubInfoCard(FilterInfo.FLOYD_STEINBERG, 0);
                     return "Floyd-Steinberg A";
                 case useFloydSteinbergDitheringOption2:
+                    showSubInfoCard(FilterInfo.FLOYD_STEINBERG, 1);
                     return "Floyd-Steinberg B";
                 case glitchyDither:
+                    showSubInfoCard(FilterInfo.FLOYD_STEINBERG, 2);
                     return "Glitchy Dither";
                 case deepFried:
+                    showSubInfoCard(FilterInfo.FLOYD_STEINBERG, 3);
                     return "Deep Fried";
                 case spookyDither:
+                    showSubInfoCard(FilterInfo.FLOYD_STEINBERG, 4);
                     return "Spooky Dark Dither";
             }
         }
@@ -501,19 +522,28 @@ public class MainActivity extends AppCompatActivity {
             ColourBlindFilterOption mode = (ColourBlindFilterOption) config.getVariant();
             switch (mode) {
                 case PROTANOPIA:
+                    showSubInfoCard(FilterInfo.COLOUR_BLIND, 0);
                     return "Protanopia";
                 case DEUTERANOPIA:
+                    showSubInfoCard(FilterInfo.COLOUR_BLIND, 1);
                     return "Deuteranopia";
                 case TRITANOPIA:
+                    showSubInfoCard(FilterInfo.COLOUR_BLIND, 2);
                     return "Tritanopia";
                 case DOG_SIMULATION:
+                    showSubInfoCard(FilterInfo.COLOUR_BLIND, 3);
                     return "Dog Vision";
+                case GRAYSCALE:
+                    showSubInfoCard(FilterInfo.COLOUR_BLIND, 4);
+                    return "Grayscale";
             }
         }
 
+        /*
         if (selectedFilter.equals("Grayscale")) {
             return "Grayscale";
         }
+         */
 
         // Default fallback
         Log.v("SEEK BAR FORMATING", "formatSeekBarLabel default value set");
@@ -565,28 +595,30 @@ public class MainActivity extends AppCompatActivity {
             // 2. Map the incoming option String to its respective title and description
             switch (activeFilter) {
                 case "K-Means":
-                    title = "K-Means Quantization";
-                    description = "Clusters image colors into a distinct, optimized color palette using spatial vector quantization.";
+                    title = FilterInfo.K_MEANS.getTitle();
+                    description = FilterInfo.K_MEANS.getDescription();
                     break;
                 case "Pixelate":
-                    title = "Pixelate Effect";
-                    description = "Downsamples the visual resolution into blocky pixel clusters for a retro, low-fidelity aesthetic.";
+                    title = FilterInfo.PIXELATE.getTitle();
+                    description = FilterInfo.PIXELATE.getDescription();
                     break;
+                    /*
                 case "Grayscale":
                     title = "Grayscale Mode";
                     description = "Converts RGB channels into monochromatic luminance values, completely stripping color saturation.";
                     break;
+                     */
                 case "Interlaced":
-                    title = "Interlaced Framing";
-                    description = "Combines alternating row exposures or sequence frames to create high-contrast composite imagery.";
+                    title = FilterInfo.INTERLACED.getTitle();
+                    description = FilterInfo.INTERLACED.getDescription();
                     break;
                 case "FloydSteinbergDithering":
-                    title = "Floyd-Steinberg Dithering";
-                    description = "Applies an error-diffusion algorithm to approximate color gradients using a highly restricted palette.";
+                    title = FilterInfo.FLOYD_STEINBERG.getTitle();
+                    description = FilterInfo.FLOYD_STEINBERG.getDescription();
                     break;
                 case "ColourBlind":
-                    title = "Color Blind Assist";
-                    description = "Transforms the active color spectrum to simulate or adjust layout visibility for color-deficiencies.";
+                    title = FilterInfo.COLOUR_BLIND.getTitle();
+                    description = FilterInfo.COLOUR_BLIND.getDescription();
                     break;
                 default:
                     title = "Unknown Filter";
@@ -601,6 +633,16 @@ public class MainActivity extends AppCompatActivity {
         } else {
             Log.e("MAIN_CAMERA_DEBUG", "Error: filter_info TextView not found in current layout view hierarchy.");
         }
+    }
+
+    private void showSubInfoCard(FilterInfo filterInfo, int option) {
+        Log.d("INFO_CARD", "selected filter is: " + filterInfo.getTitle());
+
+        TextView subFilterInfoTextCard = findViewById(R.id.subfilter_info);
+
+        String subFilterText = filterInfo.getSubFilter(option);
+
+        subFilterInfoTextCard.setText(subFilterText);
     }
 
     // ── Buttons ───────────────────────────────────────────────────────────

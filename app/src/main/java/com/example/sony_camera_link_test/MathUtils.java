@@ -116,6 +116,12 @@ public class MathUtils {
             { 0.0f,   0.300f, 0.700f }
     };
 
+    public static final float[][] GRAYSCALE = {
+            { 0.0f, 0.0f, 0.0f },
+            { 0.0f, 0.0f, 0.0f },
+            { 0.0f, 0.0f, 0.0f }
+    };
+
 
     public static float[] multiplyMatrixAndVector(float[][] matrix, float[] vector) {
         float[] result = new float[3];
