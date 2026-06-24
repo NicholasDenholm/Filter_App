@@ -1562,42 +1562,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Only works with CameraX
-    private void captureInterlacedOld(int delay, OnFilterDoneCallback onDone) {
-        ImageProcessor imgProcessor = new ImageProcessor();
-        // Dictates which row will be interlaced, every even row (2), or every 20th...
-        int modValue = delay;
-        cameraClient.takePhotoAsBitmap(bitmapA -> {
-
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-
-                cameraClient.takePhotoAsBitmap(bitmapB -> {
-
-                    Bitmap imgA = bitmapA;
-                    Bitmap imgB = bitmapB;
-                    if (downscaleEnabled) {
-                        imgA = imgProcessor.scaleBitmap(bitmapA, 1000);
-                        imgB = imgProcessor.scaleBitmap(bitmapB, 1000);
-                    }
-
-                    //Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(bitmapA, bitmapB, delay);
-                    Bitmap resultInterlaced = imgProcessor.createInterlacedDistpacter(imgA, imgB, delay);
-
-                    runOnUiThread(() -> {
-                        currentImage = resultInterlaced;
-                        setCurrentImage(resultInterlaced);
-                        saveBitmapToGallery(resultInterlaced);
-                        onDone.onDone();
-                    });
-
-                });
-                // Tried delay * 500 --> too short for sony camera, try static ~1500ms
-            }, 2 * 850);
-        });
-
-
-    }
-
     // ---- Dithering
     private void applyFloydSteinbergDithering(int kDitherOption, OnFilterDoneCallback onDone) {
         if (currentImage == null) {
