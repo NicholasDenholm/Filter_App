@@ -710,6 +710,28 @@ public class ImageProcessor {
         return result;
     }
 
+    public Bitmap rebuildFromClustersFast(int width, int height, List<float[]> centroids, int[] assignments) {
+
+        Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+
+        int[] outPixels = new int[width * height];
+
+        for (int i = 0; i < assignments.length; i++) {
+
+            float[] color = centroids.get(assignments[i]);
+
+            int r = (int) color[0];
+            int g = (int) color[1];
+            int b = (int) color[2];
+
+            outPixels[i] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        result.setPixels(outPixels, 0, width, 0, 0, width, height);
+
+        return result;
+    }
+
     // ------ Pixelation -----------------------------------------------------
     public Bitmap pixelateImage(Bitmap src, int PIX_SIZE){
 

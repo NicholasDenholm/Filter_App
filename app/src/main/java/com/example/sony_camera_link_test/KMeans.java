@@ -375,25 +375,6 @@ public class KMeans {
     }
 
 
-    // TODO
-    /*
-    [x] initializeCentroids()
-
-    [x] findNearestCentroid()
-
-    [x] assignClusters()
-
-    [x] updateCentroids()
-
-    [x] calculateDistance()
-
-    [x] run()
-        repeat:
-            assignClusters()
-            updateCentroids()
-        until convergence
-
-    */
 
     // -------- SETTERS
     /*
