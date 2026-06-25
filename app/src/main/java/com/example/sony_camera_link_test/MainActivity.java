@@ -1,5 +1,7 @@
 package com.example.sony_camera_link_test;
 
+import static android.net.http.SslCertificate.saveState;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
@@ -43,6 +45,7 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.target.CustomTarget;
@@ -83,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView seekValueLabel;
     private TextView seekFiterStrOptLabel;
     private TextView filterInfoTextCard;
-    private TextView subFilterInfoTextCard;
+    private TextView subfilterInfoTextCard;
 
     private Button buttonPhoto;
     private Button buttonPhoneCamera;
@@ -101,6 +104,8 @@ public class MainActivity extends AppCompatActivity {
 
 
     // ── State ──────────────────────────────────────────────────────────────
+    private CameraViewModel viewModel;
+
     // Default on startup
     private String selectedFilter = "K-means";
     private int currentIntensity = 10;
@@ -124,6 +129,8 @@ public class MainActivity extends AppCompatActivity {
     2. set range for seekbar in setupFilterSpinner
     3. write new method called: apply[yourFilterName]
     4. Make new case for the filter in applyFilterOfChoice
+    5. Populate filter menu... TODO
+    6. Add info card about your filter in FilterInfo
     5. Test it out
     */
 
@@ -134,7 +141,8 @@ public class MainActivity extends AppCompatActivity {
             //"Grayscale", // moved into colourblind
             "Interlaced",
             "FloydSteinbergDithering",
-            "ColourBlind"
+            "ColourBlind",
+            "BitShift"
     };
 
     interface OnBitmapReady {
@@ -214,6 +222,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
+
         //setContentView(R.layout.activity_main);
         //setContentView(R.layout.ui_redesign); // This is the new UI design
         setContentView(R.layout.ui_withdrawers);
@@ -249,6 +258,20 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e("SETUP FAILED", "ERROR: " + e);
         }
+
+        // STATE
+        viewModel = new ViewModelProvider(this).get(CameraViewModel.class);
+        // ONLY restore after rotation
+        if (savedInstanceState != null) {
+            restoreLastImage();
+            // TODO some labels are bugged when going from kmeans/pixalated --> colourblind/FS_Dither
+            restoreIntensityState();
+            restoreDownScaleState();
+        } else {
+            // When the app is closed then reopened and rotated
+            // the past image isn't loaded again.
+            viewModel.setLastImageUri(null);
+        }
     }
 
     // ── Bind all views from the layout ────────────────────────────────────
@@ -260,6 +283,7 @@ public class MainActivity extends AppCompatActivity {
         seekValueLabel = findViewById(R.id.seek_value_label);
         seekFiterStrOptLabel = findViewById(R.id.label_clusters_block_size);
         filterInfoTextCard = findViewById(R.id.filter_info);
+        subfilterInfoTextCard = findViewById(R.id.subfilter_info);
 
         buttonPhoto = findViewById(R.id.button_photo); // Sony camera button
         buttonPhoneCamera = findViewById(R.id.button_phone_camera); // Phone button
@@ -324,43 +348,45 @@ public class MainActivity extends AppCompatActivity {
                 switch (position) {
                     // TODO Clean up the options and k comments and code here
                     case 0: // K-means — cluster count 2–22
+                        setSelectedFilter("K-Means");
                         currentFilterConfig.setVariant(null);
                         setSeekBarRange(0, 30);
                         updateSeekBarTicks("2", "16", "30");
                         updateFilterOptionLabel("CLUSTER COUNT");
                         break;
                     case 1: // Pixelation — block size 2–40px
+                        setSelectedFilter("Pixelate");
                         currentFilterConfig.setVariant(null);
                         setSeekBarRange(0, 40);
                         updateSeekBarTicks("2", "21", "40");
                         updateFilterOptionLabel("PIXELATION STRENGTH");
                         break;
-                    /* Moved to colour blind
-                    case 2: // Grayscale — 1–2 (no real range needed)
-                        //currentFilterConfig.setVariant(null);
-                        currentFilterConfig.setVariant(ColourBlindFilterOption.GRAYSCALE);
-                        setSeekBarRange(1, 2);
-                        updateSeekBarTicks("", "", "");
-                        updateFilterOptionLabel("");
-                        break;
-
-                     */
                     case 2: // Interlace — 0–7
+                        setSelectedFilter("Interlaced");
                         currentFilterConfig.setVariant(InterlaceFilterOption.VERTICAL_STRIPES);
                         setSeekBarRange(0, 7);
                         updateSeekBarTicks("0", "", "7");
                         updateFilterOptionLabel("OPTION");
                         break;
                     case 3: // FloydSteinbergDithering — 0–5
+                        setSelectedFilter("FloydSteinbergDithering");
                         currentFilterConfig.setVariant(DitherFilterOption.useFloydSteinbergDitheringOption2);
                         setSeekBarRange(0, 6);
                         updateSeekBarTicks("0", "", "6");
                         updateFilterOptionLabel("OPTION");
                         break;
-                    case 4: // colour blind — 0–6 options
+                    case 4: // colour-blind — 0–6 options
+                        setSelectedFilter("ColourBlind");
                         currentFilterConfig.setVariant(ColourBlindFilterOption.PROTANOPIA);
                         setSeekBarRange(0,6);
                         updateSeekBarTicks("0", "", "5");
+                        updateFilterOptionLabel("OPTION");
+                        break;
+                    case 5: // BitShift — 0–6 options
+                        setSelectedFilter("BitShift");
+                        currentFilterConfig.setVariant(BitShiftFilterOption.BIT_ROTATION_GLITCH);
+                        setSeekBarRange(0,7);
+                        updateSeekBarTicks("0", "", "6");
                         updateFilterOptionLabel("OPTION");
                         break;
                     default:
@@ -426,23 +452,31 @@ public class MainActivity extends AppCompatActivity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 Log.d("SEEK_DEBUG", "onProgressChanged triggered! New progress: " + progress + " | fromUser: " + fromUser);
                 try {
-                    currentIntensity = getSeekBarValue();
-                    Log.d("SEEK_DEBUG", "Calculated currentIntensity: " + currentIntensity);
+                    if (fromUser) {
+                        currentIntensity = getSeekBarValue();
+                        setCurrentIntensity(currentIntensity);
 
-                    if (currentFilterConfig != null) {
-                        currentFilterConfig.setIntensity(currentIntensity);
+                        Log.d("SEEK_DEBUG", "Calculated currentIntensity: " + currentIntensity);
+
+                        if (currentFilterConfig != null) {
+                            currentFilterConfig.setIntensity(currentIntensity);
+                        } else {
+                            Log.w("SEEK_DEBUG", "Warning: currentFilterConfig is NULL");
+                        }
+
+                        updateVariantFromIntensity();
+
+                        if (seekValueLabel != null) {
+                            String updatedLabel = formatSeekBarLabel(currentFilterConfig);
+                            seekValueLabel.setText(updatedLabel);
+                            Log.d("SEEK_DEBUG", "Label updated successfully to: " + updatedLabel);
+                        } else {
+                            Log.e("SEEK_DEBUG", "Error: seekValueLabel is NULL! Cannot update UI text.");
+                        }
                     } else {
-                        Log.w("SEEK_DEBUG", "Warning: currentFilterConfig is NULL");
-                    }
-
-                    updateVariantFromIntensity();
-
-                    if (seekValueLabel != null) {
-                        String updatedLabel = formatSeekBarLabel(currentFilterConfig);
-                        seekValueLabel.setText(updatedLabel);
-                        Log.d("SEEK_DEBUG", "Label updated successfully to: " + updatedLabel);
-                    } else {
-                        Log.e("SEEK_DEBUG", "Error: seekValueLabel is NULL! Cannot update UI text.");
+                        currentIntensity = getSeekBarValue();
+                        restoreIntensityState();
+                        updateVariantFromIntensity();
                     }
                 } catch (Exception e) {
                     Log.e("SEEK_DEBUG", "CRITICAL ERROR inside onProgressChanged logic: ", e);
@@ -539,6 +573,31 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        if (selectedFilter.equals("BitShift")) {
+            BitShiftFilterOption mode = (BitShiftFilterOption) config.getVariant();
+
+            switch (mode) {
+                case RGB_ROTATION:
+                    showSubInfoCard(FilterInfo.BIT_SHIFT, 0);
+                    return "RGB Rotation";
+                case BIT_SHIFT:
+                    showSubInfoCard(FilterInfo.BIT_SHIFT, 1);
+                    return "Bit Shift";
+                case CYAN_MAGENTA_SHIFT:
+                    showSubInfoCard(FilterInfo.BIT_SHIFT, 2);
+                    return "Cyan/Magenta Shift";
+                case XOR_GLITCH:
+                    showSubInfoCard(FilterInfo.BIT_SHIFT, 3);
+                    return "XOR Glitch";
+                case RETRO_QUANTIZATION:
+                    showSubInfoCard(FilterInfo.BIT_SHIFT, 4);
+                    return "Retro Quantization";
+                case BIT_ROTATION_GLITCH:
+                    showSubInfoCard(FilterInfo.BIT_SHIFT, 5);
+                    return "Bit Rotation Glitch";
+            }
+        }
+
         /*
         if (selectedFilter.equals("Grayscale")) {
             return "Grayscale";
@@ -578,6 +637,16 @@ public class MainActivity extends AppCompatActivity {
             Log.v("SEEK BAR", "option AFTER is " + currentFilterConfig.getVariant());
             Log.v("SEEK BAR", "intensity AFTER is " + currentFilterConfig.getIntensity());
         }
+        else if (variant instanceof BitShiftFilterOption) {
+            BitShiftFilterOption[] values = BitShiftFilterOption.values();
+            Log.v("VALUES", "Values are: " + Arrays.toString(values));
+            Log.v("SEEK BAR", "option BEFORE is " + currentFilterConfig.getVariant());
+            Log.v("SEEK BAR", "intensity BEFORE is " + currentFilterConfig.getIntensity());
+            int index = Math.min(currentFilterConfig.getIntensity() - 2, values.length - 1);
+            currentFilterConfig.setVariant(values[index]);
+            Log.v("SEEK BAR", "option AFTER is " + currentFilterConfig.getVariant());
+            Log.v("SEEK BAR", "intensity AFTER is " + currentFilterConfig.getIntensity());
+        }
     }
 
     // --------- Info cards
@@ -602,12 +671,6 @@ public class MainActivity extends AppCompatActivity {
                     title = FilterInfo.PIXELATE.getTitle();
                     description = FilterInfo.PIXELATE.getDescription();
                     break;
-                    /*
-                case "Grayscale":
-                    title = "Grayscale Mode";
-                    description = "Converts RGB channels into monochromatic luminance values, completely stripping color saturation.";
-                    break;
-                     */
                 case "Interlaced":
                     title = FilterInfo.INTERLACED.getTitle();
                     description = FilterInfo.INTERLACED.getDescription();
@@ -619,6 +682,10 @@ public class MainActivity extends AppCompatActivity {
                 case "ColourBlind":
                     title = FilterInfo.COLOUR_BLIND.getTitle();
                     description = FilterInfo.COLOUR_BLIND.getDescription();
+                    break;
+                case "BitShift":
+                    title = FilterInfo.BIT_SHIFT.getTitle();
+                    description = FilterInfo.BIT_SHIFT.getDescription();
                     break;
                 default:
                     title = "Unknown Filter";
@@ -701,10 +768,13 @@ public class MainActivity extends AppCompatActivity {
                 ColorStateList.valueOf(appColor.MEDIUM_PURPLE.getColor(this)));
          */
 
-        downscaleImageButton.setOnClickListener(v -> changeDownScaleOption() );
+        downscaleImageButton.setOnClickListener(v -> {
+            //changeDownScaleOption();
+            //viewModel.setDownscaleEnabled(!viewModel.isDownscaleEnabled());
+            changeDownScaleOptionState();
+        });
         // Set colour for downscale image toggle
-        downscaleImageButton.setBackgroundTintList(
-                ColorStateList.valueOf(appColor.WHITE.getColor(this)));
+        downscaleImageButton.setBackgroundTintList(ColorStateList.valueOf(appColor.WHITE.getColor(this)));
 
         // Set up zoom seek bar
         setupZoomSeekBar();
@@ -753,6 +823,64 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
+    }
+
+    // ── STATE Restore and Setting ─────────────────────────────────────────
+    private void restoreLastImage() {
+
+        String uriString = viewModel.getLastImageUri();
+
+        if (uriString == null) return;
+
+        try {
+            Uri uri = Uri.parse(uriString);
+
+            Bitmap bitmap = BitmapFactory.decodeStream(
+                    getContentResolver().openInputStream(uri)
+            );
+
+            imageView.setImageBitmap(bitmap);
+
+            Log.d("RESTORE", "Last image restored");
+
+        } catch (Exception e) {
+            Log.e("RESTORE", "Failed to restore image", e);
+        }
+    }
+
+    private void restoreIntensityState() {
+        int intensity = viewModel.getCurrentIntensity();
+        seekBarFilterStrength.setProgress(intensity);
+
+        Log.d("RESTORE", "Intensity restored: " + intensity);
+    }
+
+    private void restoreDownScaleState() {
+        boolean downscale = viewModel.isDownscaleEnabled();
+        Log.d("RESTORE", "Intensity restored: " + downscale);
+
+        downscaleImageButton.setChecked(downscale);
+
+        if (downscale) {
+            downscaleImageButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.WHITE.getColor(this)));
+        } else {
+            downscaleImageButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.TEXT_DARK_GREY.getColor(this)));
+        }
+
+        Log.d("RESTORE", "Downscale restored: " + downscale);
+    }
+
+    public void setSelectedFilter(String filter) {
+        this.selectedFilter = filter;
+        viewModel.saveState();
+    }
+
+    public void setCurrentIntensity(int value) {
+        currentIntensity = value;
+        viewModel.setCurrentIntensity(currentIntensity);
+        viewModel.saveState();
     }
 
     // ── Cameras ───────────────────────────────────────────────────────────
@@ -911,9 +1039,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ---------- Changing UI values -----------------------------------------
+    // ------ Downscale
     private void changeDownScaleOption() {
         downscaleEnabled = !downscaleEnabled;
         downscaleImageButton.setChecked(downscaleEnabled);
+        //viewModel.setDownscaleEnabled(downscaleEnabled);
 
         if (downscaleEnabled) {
             downscaleImageButton.setBackgroundTintList(
@@ -926,6 +1056,27 @@ public class MainActivity extends AppCompatActivity {
         }
         Log.d("SETUP BUTTONS", "downscale = " + downscaleEnabled);
     }
+
+    private void changeDownScaleOptionState() {
+        boolean newValue = !viewModel.isDownscaleEnabled();
+        viewModel.setDownscaleEnabled(newValue);
+
+        downscaleImageButton.setChecked(newValue);
+
+        if (newValue) {
+            downscaleImageButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.WHITE.getColor(this)));
+            Toast.makeText(this, "Downscale Enabled", Toast.LENGTH_SHORT).show();
+        } else {
+            downscaleImageButton.setBackgroundTintList(
+                    ColorStateList.valueOf(appColor.TEXT_DARK_GREY.getColor(this)));
+            Toast.makeText(this, "Downscale Disabled", Toast.LENGTH_SHORT).show();
+        }
+
+        Log.d("SETUP BUTTONS", "downscale = " + newValue);
+    }
+
+    // ------ Seekbar for filter strength
 
     // ---------- Filter seek bar methods
     // Track the minimum offset manually instead of using SeekBar.setMin() (API 26+).
@@ -1172,6 +1323,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ------------------- Saving Images -------------------
+
     // TODO maybe move this to a IO class
     private void saveBitmapToGallery(Bitmap bitmap) {
         String filename = "Sony_" + selectedFilter + "_" + System.currentTimeMillis() + ".png";
@@ -1213,6 +1365,9 @@ public class MainActivity extends AppCompatActivity {
 
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
 
+            // SAVE STATE HERE
+            viewModel.setLastImageUri(uri.toString());
+
             Log.d("SAVE IMAGE", "Image saved (modern)!");
 
         } catch (Exception e) {
@@ -1247,6 +1402,9 @@ public class MainActivity extends AppCompatActivity {
                     new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
 
             Uri contentUri = Uri.fromFile(imageFile);
+
+            // SAVE STATE HERE
+            viewModel.setLastImageUri(contentUri.toString());
 
             mediaScanIntent.setData(contentUri);
 
@@ -1319,6 +1477,11 @@ public class MainActivity extends AppCompatActivity {
                     Log.v("SEEK BAR", "Colour blind option is " + config.getVariant());
                     Log.v("SEEK BAR", "Colour blind intensity is " + config.getIntensity());
                     applyColourBlind(config.getIntensity(), onDone);
+                    break;
+                case "BitShift":
+                    Log.v("SEEK BAR", "BitShift option is " + config.getVariant());
+                    Log.v("SEEK BAR", "BitShift intensity is " + config.getIntensity());
+                    applyBitShift(config.getIntensity(), onDone);
                     break;
             }
             /*
@@ -1506,25 +1669,7 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    private void applyPixelatedNoThread(int pixelationStrength) {
-
-        if (currentImage == null) {
-            Log.e("APPLY KMEANS", "No image provided");
-            return;
-        }
-
-        ImageProcessor imgProcessor = new ImageProcessor();
-        Bitmap pixelatedBitmap = imgProcessor.pixelateImage(currentImage, pixelationStrength);
-
-        runOnUiThread(() -> {
-            setCurrentImage(pixelatedBitmap);
-            saveBitmapToGallery(pixelatedBitmap);
-        });
-
-    }
-
     // ---- Interlaced
-
     private void captureInterlaced(int delay, OnFilterDoneCallback onDone) {
         ImageProcessor imgProcessor = new ImageProcessor();
 
@@ -1606,5 +1751,23 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
+    // ---- BitShift
+    private void applyBitShift(int bitShiftOption, OnFilterDoneCallback onDone) {
+        if (currentImage == null) {
+            Log.e("APPLY FILTER", "No image provided");
+            return;
+        }
 
+        runAsync(() -> {
+                    return ImageProcessor.bitShiftFilter(currentImage, bitShiftOption);
+                },
+                result -> {
+                    setCurrentImage(result);
+                    saveBitmapToGallery(result);
+                    onDone.onDone();
+                }
+        );
+    }
+
+    // End
 }

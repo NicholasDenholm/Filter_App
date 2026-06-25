@@ -1037,4 +1037,87 @@ public class ImageProcessor {
         return out;
     }
 
+    // ------ BitShift -----------------------------------------------------
+    public static Bitmap bitShiftFilter(Bitmap source, int option) {
+
+        int width = source.getWidth();
+        int height = source.getHeight();
+
+        Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+
+        int[] pixels = new int[width * height];
+        source.getPixels(pixels, 0, width, 0, 0, width, height);
+
+        int offsetOption = option - 2;
+        Log.v("BITSHIFT DISPATCHER", "option is: " + offsetOption);
+
+        for (int i = 0; i < pixels.length; i++) {
+
+            int pixel = pixels[i];
+
+            int a = (pixel >> 24) & 0xFF;
+            int r = (pixel >> 16) & 0xFF;
+            int g = (pixel >> 8) & 0xFF;
+            int b = pixel & 0xFF;
+
+            int newR = r;
+            int newG = g;
+            int newB = b;
+
+
+
+            switch (offsetOption) {
+
+                case 0: // RGB Rotation
+                    newR = g;
+                    newG = b;
+                    newB = r;
+                    break;
+
+                case 1: // Bit Shift
+                    newR = (r << 1) & 0xFF;
+                    newG = (g >> 1) & 0xFF;
+                    newB = (b << 2) & 0xFF;
+                    break;
+
+                case 2: // Cyan/Magenta
+                    newR = r >> 1;
+                    newG = g;
+                    newB = Math.min(255, b << 1);
+                    break;
+
+                case 3: // XOR Glitch
+                    newR = r ^ 0x55;
+                    newG = g ^ 0xAA;
+                    newB = b ^ 0xFF;
+                    break;
+
+                case 4: // Retro Quantization
+                    newR = r & 0xE0;
+                    newG = g & 0xE0;
+                    newB = b & 0xE0;
+                    break;
+
+                case 5: // Bit Rotation Glitch
+                    newR = ((r << 3) | (r >> 5)) & 0xFF;
+                    newG = ((g << 2) | (g >> 6)) & 0xFF;
+                    newB = ((b << 5) | (b >> 3)) & 0xFF;
+                    break;
+            }
+
+            // Android stores pixels as:
+            // AAAAAAAA RRRRRRRR GGGGGGGG BBBBBBBB
+            //| 8 bits | 8 bits | 8 bits | 8 bits |
+            pixels[i] =
+                    (a << 24) |
+                            (newR << 16) |
+                            (newG << 8) |
+                            newB;
+        }
+
+        result.setPixels(pixels, 0, width, 0, 0, width, height);
+
+        return result;
+    }
+
 }
