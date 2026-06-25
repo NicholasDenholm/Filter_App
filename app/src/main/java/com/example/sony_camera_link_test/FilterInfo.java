@@ -51,6 +51,18 @@ public enum FilterInfo {
                     "Dog Vision: Red shifted toward green.",
                     "Grayscale: Black and white."
             }
+    ),
+    BIT_SHIFT(
+            "BitShift",
+            "Applies low-level bitwise operations to RGB color channels, producing glitchy, retro, and experimental colour effects.",
+            new String[]{
+                    "RGB Rotation: Rotates RGB channels (R→G→B→R), creating surreal colour shifts.",
+                    "Bit Shift: Shifts colour channel bits left and right, exaggerating some colours while suppressing others.",
+                    "Cyan/Magenta Shift: Reduces reds and boosts blues for a cool cyan-magenta aesthetic.",
+                    "XOR Glitch: Applies XOR masks to colour channels, producing psychedelic glitch-like colours.",
+                    "Retro Quantization: Reduces colour precision for a retro 8-bit or posterized appearance.",
+                    "Bit Rotation Glitch: Rotates bits within colour channels, creating colourful digital-artifact effects."
+            }
     );
 
     private final String title;
